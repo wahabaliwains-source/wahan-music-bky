@@ -14,7 +14,7 @@ pillow==9.5.0
 psutil
 pytube
 pykeyboard
-py-tgcalls==3.0.0rc3
+py-tgcalls==2.2.11
 python-dotenv
 pyyaml
 requests
