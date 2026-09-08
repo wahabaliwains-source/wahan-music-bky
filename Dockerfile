@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ffmpeg \
+       curl \
        unzip \
        gcc \
        git \
@@ -31,7 +32,6 @@ ENV PATH=$DENO_INSTALL/bin:$PATH
 # Upgrade pip & install deps
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
-
 
 
 CMD python3 -m WahabX
