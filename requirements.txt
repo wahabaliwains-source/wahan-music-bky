@@ -27,7 +27,5 @@ uvloop
 flask
 gunicorn
 yt-dlp[default]@https://github.com/yt-dlp/yt-dlp/archive/refs/heads/master.tar.gz
-yt-dlp-getpot-wp
-c
 py-yt-search>=0.2
 pyroblack
