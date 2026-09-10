@@ -25,6 +25,6 @@ urllib3
 uvloop
 flask
 gunicorn
-yt-dlp[default]@https://github.com/yt-dlp/yt-dlp/archive/refs/heads/master.tar.gz
+yt-dlp[default]@https://github.com/yt-dlp/yt-dlp/archive/refs/heads/master.tar.gz#cachebust
 py-yt-search>=0.2
 pyroblack
