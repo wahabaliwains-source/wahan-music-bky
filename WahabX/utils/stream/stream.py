@@ -102,7 +102,7 @@ async def stream(
                 if not forceplay:
                     db[chat_id] = []
                 status = True if video else None
-                instant = await get_instant_play(chat_id)
+                instant = False
                 slog.info(
                     "[%s] playlist first-track: vidid=%s instant=%s",
                     _STREAM_LOG, vidid, instant,
@@ -205,7 +205,7 @@ async def stream(
         duration_min = result["duration_min"]
         thumbnail = result["thumb"]
         status = True if video else None
-        instant = await get_instant_play(chat_id)
+        instant = False
         # Force download when proxy is configured (ffmpeg proxy issues cause no sound)
         if _FORCE_DOWNLOAD:
             instant = False
@@ -255,16 +255,36 @@ async def stream(
                 )
                 slog.info("[%s] download() returned direct=%s", _STREAM_LOG, direct)
             except Exception as e:
-                slog.error("[%s] download() EXCEPTION: %s", _STREAM_LOG, e)
+                slog.warning(
+                    "[%s] YouTube download failed; trying SoundCloud fallback: %s",
+                    _STREAM_LOG, e,
+                )
                 try:
-                    await notify_owner(
-                        "Stream.youtube.download",
-                        e,
-                        f"vidid={vidid} chat={chat_id}",
-                    )
-                except Exception:
-                    pass
-                raise AssistantErr(_["play_16"])
+                    sc = await Platform.soundcloud.search(title)
+                    if not sc or not sc.get("url"):
+                        raise RuntimeError("SoundCloud track not found")
+                    sc_details, sc_file = await Platform.soundcloud.download(sc["url"])
+                    if not sc_file or not os.path.isfile(sc_file):
+                        raise RuntimeError("SoundCloud download produced no file")
+                    stream_link = sc_file
+                    direct = True
+                    title = sc_details["title"]
+                    duration_min = sc_details["duration_min"]
+                    thumbnail = config.SOUNCLOUD_IMG_URL
+                    streamtype = "soundcloud"
+                    vidid = "soundcloud"
+                    slog.info("[%s] SoundCloud fallback downloaded: %s", _STREAM_LOG, sc_file)
+                except Exception as sc_error:
+                    slog.error("[%s] SoundCloud fallback failed: %s", _STREAM_LOG, sc_error)
+                    try:
+                        await notify_owner(
+                            "Stream.youtube -> SoundCloud fallback",
+                            sc_error,
+                            f"title={title[:80]} chat={chat_id}",
+                        )
+                    except Exception:
+                        pass
+                    raise AssistantErr(_["play_16"])
         if await is_active_chat(chat_id):
             await put_queue(
                 chat_id,
