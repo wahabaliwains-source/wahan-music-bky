@@ -429,22 +429,43 @@ async def play_commnd(
                 details.get("title", "?")[:40],
                 track_id,
             )
+            streamtype = "youtube"
         except Exception as e:
-            LOGGER(_PLAY_LOG).error(
-                "[PLAY] track() FAILED after %.1fs err=%s",
+            LOGGER(_PLAY_LOG).warning(
+                "[PLAY] YouTube search failed after %.1fs; trying SoundCloud: %s",
                 _time.monotonic() - track_t0,
                 e,
             )
+            sc = await Platform.soundcloud.search(query)
+            if not sc or not sc.get("url"):
+                try:
+                    await notify_owner(
+                        "Play.track + SoundCloud fallback",
+                        e,
+                        f"query={query[:80]} user={user_id} chat={message.chat.id}",
+                    )
+                except Exception:
+                    pass
+                return await mystic.edit_text(_["play_3"])
             try:
-                await notify_owner(
-                    "Play.track",
-                    e,
-                    f"query={query[:80]} user={user_id} chat={message.chat.id}",
+                duration_sec = int(sc.get("duration_sec") or 0)
+                if duration_sec > config.DURATION_LIMIT:
+                    return await mystic.edit_text(
+                        _["play_6"].format(config.DURATION_LIMIT_MIN, sc["duration_min"])
+                    )
+                details, track_path = await Platform.soundcloud.download(sc["url"])
+                details["filepath"] = track_path
+                streamtype = "soundcloud"
+                track_id = "soundcloud"
+                img = config.SOUNCLOUD_IMG_URL
+                LOGGER(_PLAY_LOG).info(
+                    "[PLAY] SoundCloud fallback selected: %s", details.get("title", query)[:60]
                 )
-            except Exception:
-                pass
-            return await mystic.edit_text(_["play_3"])
-        streamtype = "youtube"
+            except Exception as sc_error:
+                LOGGER(_PLAY_LOG).error(
+                    "[PLAY] SoundCloud fallback failed: %s", sc_error, exc_info=True
+                )
+                return await mystic.edit_text(_["play_3"])
     if str(playmode) == "Direct" and not plist_type:
         if details["duration_min"]:
             duration_sec = time_to_seconds(details["duration_min"])
