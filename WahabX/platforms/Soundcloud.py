@@ -1,9 +1,8 @@
-
 # All rights reserved.
-#
 
 from os import path
 
+import config
 from yt_dlp import YoutubeDL
 
 from WahabX.utils.decorators import asyncify
@@ -48,7 +47,12 @@ class SoundCloud:
     def download(self, url: str) -> dict | bool:
         with YoutubeDL(self.opts) as ydl:
             try:
-                info = ydl.extract_info(url)
+                # Inspect metadata first. Never download tracks above the configured limit.
+                info = ydl.extract_info(url, download=False)
+                duration = int(info.get("duration") or 0)
+                if duration > config.SONG_DOWNLOAD_DURATION_LIMIT:
+                    return False
+                info = ydl.extract_info(url, download=True)
             except Exception:
                 return False
             xyz = path.join("downloads", f"{info['id']}.{info['ext']}")
