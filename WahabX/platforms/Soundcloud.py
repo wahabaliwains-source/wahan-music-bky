@@ -24,6 +24,27 @@ class SoundCloud:
         return "soundcloud" in link
 
     @asyncify
+    def search(self, query: str) -> dict | bool:
+        """Find the first SoundCloud track for a text query."""
+        with YoutubeDL(self.opts) as ydl:
+            try:
+                info = ydl.extract_info(f"scsearch1:{query}", download=False)
+                entries = (info or {}).get("entries") or []
+                if not entries:
+                    return False
+                item = entries[0]
+                duration = int(item.get("duration") or 0)
+                return {
+                    "url": item.get("webpage_url") or item.get("original_url") or item.get("url"),
+                    "title": item.get("title") or query,
+                    "duration_sec": duration,
+                    "duration_min": seconds_to_min(duration),
+                    "uploader": item.get("uploader") or "",
+                }
+            except Exception:
+                return False
+
+    @asyncify
     def download(self, url: str) -> dict | bool:
         with YoutubeDL(self.opts) as ydl:
             try:
