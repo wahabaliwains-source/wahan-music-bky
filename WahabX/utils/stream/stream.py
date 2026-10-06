@@ -86,7 +86,7 @@ async def stream(
                 await put_queue(
                     chat_id,
                     original_chat_id,
-                    f"vid_{vidid}",
+                    stream_link if streamtype == "soundcloud" else f"vid_{vidid}",
                     title,
                     duration_min,
                     user_name,
@@ -156,7 +156,7 @@ async def stream(
                 await put_queue(
                     chat_id,
                     original_chat_id,
-                    f"vid_{vidid}",
+                    stream_link if streamtype == "soundcloud" else f"vid_{vidid}",
                     title,
                     duration_min,
                     user_name,
@@ -165,7 +165,7 @@ async def stream(
                     "video" if video else "audio",
                     forceplay=forceplay,
                 )
-                img = await gen_thumb(vidid)
+                img = config.SOUNCLOUD_IMG_URL if streamtype == "soundcloud" else await gen_thumb(vidid)
                 button = stream_markup(_, vidid, chat_id)
                 run = await app.send_photo(
                     original_chat_id,
@@ -289,7 +289,7 @@ async def stream(
             await put_queue(
                 chat_id,
                 original_chat_id,
-                f"vid_{vidid}",
+                stream_link if streamtype == "soundcloud" else f"vid_{vidid}",
                 title,
                 duration_min,
                 user_name,
@@ -298,7 +298,7 @@ async def stream(
                 "video" if video else "audio",
             )
             position = len(db.get(chat_id)) - 1
-            qimg = await gen_qthumb(vidid)
+            qimg = config.SOUNCLOUD_IMG_URL if streamtype == "soundcloud" else await gen_qthumb(vidid)
             run = await app.send_photo(
                 original_chat_id,
                 photo=qimg,
@@ -316,7 +316,7 @@ async def stream(
             await put_queue(
                 chat_id,
                 original_chat_id,
-                f"vid_{vidid}",
+                stream_link if streamtype == "soundcloud" else f"vid_{vidid}",
                 title,
                 duration_min,
                 user_name,
