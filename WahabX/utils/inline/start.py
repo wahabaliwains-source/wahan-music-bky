@@ -3,7 +3,7 @@
 #
 from typing import Union
 
-from config import GITHUB_REPO, SUPPORT_CHANNEL, SUPPORT_GROUP
+from config import GITHUB_REPO, SUPPORT_CHANNEL, SUPPORT_GROUP, OWNER_LINK, REPO_BUTTON_TEXT
 from WahabX import app
 from WahabX.utils.premium import (
     back_btn,
@@ -73,8 +73,8 @@ def private_panel(_, BOT_USERNAME, OWNER: Union[bool, int] = None):
     if GITHUB_REPO and OWNER:
         buttons.append(
             [
-                link_btn(_["S_B_7"], url="https://t.me/xwahabgod", emoji="👑"),
-                link_btn(_["S_B_6"], url=f"{GITHUB_REPO}", emoji="💻"),
+                link_btn(_["S_B_7"], url=OWNER_LINK, emoji="👑"),
+                link_btn(REPO_BUTTON_TEXT, url=f"{GITHUB_REPO}", emoji="💻"),
             ]
         )
     else:
@@ -82,7 +82,7 @@ def private_panel(_, BOT_USERNAME, OWNER: Union[bool, int] = None):
         if GITHUB_REPO:
             buttons.append(
                 [
-                    link_btn(_["S_B_6"], url=f"{GITHUB_REPO}", emoji="💻"),
+                    link_btn(REPO_BUTTON_TEXT, url=f"{GITHUB_REPO}", emoji="💻"),
                 ]
             )
 
