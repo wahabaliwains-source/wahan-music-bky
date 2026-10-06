@@ -153,7 +153,9 @@ class Call:
         assistant = await group_assistant(self, chat_id)
         try:
             check = db.get(chat_id)
-            check.pop(0)
+            popped = check.pop(0) if check else None
+            if popped:
+                await auto_clean(popped)
         except Exception as e:
             LOGGER(__name__).error(f"Error popping queue for chat {chat_id}: {e}")
         await remove_active_video_chat(chat_id)
@@ -520,21 +522,23 @@ class Call:
             elif "vid_" in queued:
                 video = True if str(streamtype) == "video" else False
                 mystic = await app.send_message(original_chat_id, _["call_8"])
-                n, stream_link = await Platform.youtube.stream_url(
-                    videoid, videoid=True, video=video
-                )
-                if n == 0:
+                mystic = await app.send_message(original_chat_id, _["call_8"])
+                try:
+                    stream_link, direct = await Platform.youtube.download(
+                        videoid,
+                        mystic,
+                        videoid=True,
+                        video=video,
+                    )
+                except Exception:
                     try:
-                        stream_link, direct = await Platform.youtube.download(
-                            videoid,
-                            mystic,
-                            videoid=True,
-                            video=video,
-                        )
+                        await mystic.delete()
                     except Exception:
-                        return await mystic.edit_text(
-                            _["call_7"], disable_web_page_preview=True
-                        )
+                        pass
+                    return await app.send_message(
+                        original_chat_id,
+                        text=_["call_7"],
+                    )
                 is_remote = isinstance(stream_link, str) and stream_link.startswith("http")
                 ffmpeg_params = (_REMOTE_FFMPEG_PARAMS_VIDEO if is_remote else _LOCAL_FFMPEG_PARAMS_VIDEO) if video else (_REMOTE_FFMPEG_PARAMS if is_remote else _LOCAL_FFMPEG_PARAMS)
                 if video:
