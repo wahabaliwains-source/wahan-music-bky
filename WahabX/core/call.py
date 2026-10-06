@@ -577,7 +577,7 @@ class Call:
                     )
                 img = await gen_thumb(videoid)
                 button = stream_markup(_, videoid, chat_id)
-                if instant or 'mystic' in locals():
+                if 'mystic' in locals():
                     await mystic.delete()
                 run = await app.send_photo(
                     original_chat_id,
