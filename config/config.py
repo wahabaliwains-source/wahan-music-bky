@@ -113,16 +113,12 @@ GIT_TOKEN = getenv(
 
 
 # Only  Links formats are  accepted for this Var value.
-SUPPORT_CHANNEL = getenv(
-    "SUPPORT_CHANNEL", "https://t.me/TomatoFist"
-)
+SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/xwahab")
 
-SUPPORT_GROUP = getenv(
-    "SUPPORT_GROUP", "https://t.me/Itz_wahab_family"
-)  
+SUPPORT_GROUP = getenv("SUPPORT_GROUP", "https://t.me/wahabgram")
 
-
-
+OWNER_LINK = getenv("OWNER_LINK", "https://t.me/xwahabgod")
+REPO_BUTTON_TEXT = getenv("REPO_BUTTON_TEXT", "WAHAB PAPA EY")
 # Set it true if you want your bot to be private only [You'll need to allow CHAT_ID via /authorize command then only your bot will play music in that chat.]
 PRIVATE_BOT_MODE = getenv("PRIVATE_BOT_MODE", "False")
 
@@ -139,7 +135,7 @@ TELEGRAM_DOWNLOAD_EDIT_SLEEP = int(getenv("TELEGRAM_EDIT_SLEEP", "5"))
 
 
 # Your Github Repo.. Will be shown on /start Command
-GITHUB_REPO = getenv("GITHUB_REPO", "https://github.com/wahabbolteop/WahabMusic")
+GITHUB_REPO = getenv("GITHUB_REPO", "https://t.me/xwahabalo")
 
 
 # Spotify Client.. Get it from https://developer.spotify.com/dashboard
