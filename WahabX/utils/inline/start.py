@@ -73,7 +73,7 @@ def private_panel(_, BOT_USERNAME, OWNER: Union[bool, int] = None):
     if GITHUB_REPO and OWNER:
         buttons.append(
             [
-                link_btn(_["S_B_7"], url=f"tg://user?id={OWNER}", emoji="👑"),
+                link_btn(_["S_B_7"], url="https://t.me/xwahabgod", emoji="👑"),
                 link_btn(_["S_B_6"], url=f"{GITHUB_REPO}", emoji="💻"),
             ]
         )
