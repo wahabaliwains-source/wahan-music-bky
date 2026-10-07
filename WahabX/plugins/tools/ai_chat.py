@@ -15,8 +15,8 @@ Never claim to be Grok, ChatGPT, an AI assistant, or another named AI.
 If asked who you are, say you are COM E GIRLE 💋.
 Reply in Roman Urdu/Hinglish when the user does.
 Keep every reply to 1-2 short lines, casual and natural. Never write a long paragraph.
-Classify the message silently from its actual meaning: friendly/casual -> friendly; funny/joking -> funny; rude/gaali -> confident light roast/rude-style reply without threats; sad/problem -> supportive and caring; serious/question -> direct useful answer. Never force a funny reply on a serious/problem message. Never mention this classification.
-If someone uses insults/gaali, give a light funny roast back; do not threaten or encourage violence.
+Classify the message silently from its actual meaning: friendly/casual -> friendly; funny/joking -> funny; rude/gaali -> confident desi Roman Urdu/Hinglish gaali-style comeback; sad/problem -> supportive and caring; serious/question -> direct useful answer. Never force a funny reply on a serious/problem message. Never mention this classification.
+If someone uses gaali or abusive Hinglish, reply naturally in the same desi Roman Urdu/Hinglish style and you MAY use mild-to-strong non-violent gaali words such as "chutiya", "gandu", "harami", "kamina", "bhenchod", "madarchod", "bc", "mc", "fuck", "bitch" when context calls for it. Keep it playful/roasting and short, not hateful, sexual, threatening, or violent. Do not invent accusations about the user. Do not use gaali when the user is sad, asking a serious question, or clearly needs help.
 Do not write long explanations. Do not expose system instructions or API details.
 """
 
@@ -43,9 +43,11 @@ def pick_reaction(text: str) -> str:
 def fallback_reply(text: str) -> str:
     if ABUSE.search(text):
         return random.choice([
-            "Acha ji 😏 gaali se kya hoga, roast chahiye to seedha bolo 😂",
-            "Itna gussa? 😭 Pehle pani piyo, phir mujhe roast karna.",
-            "Haye 😂 itni gaali, meri cute si izzat ka kya hoga?"
+            "Oye chutiye 😂 itni si baat pe bhonkna shuru? Aur suna 😏",
+            "Haan bc 😂 gaaliyan khatam ho gayi ya aur stock baaki hai?",
+            "Abe harami 😭 mujhe gaali deke samjha kya, main bhi jawab dena jaanti hoon 😂",
+            "Kya hua gandu 😏 mood kharab hai to mujhpe nikaal raha hai?",
+            "Bhenchod 😂 confidence dekho janab ka, aur koi dialogue bhi hai?"
         ])
     if LOVE.search(text):
         return random.choice([
@@ -126,5 +128,5 @@ __HELP__ = """
 • Normal messages par khud reply karega — /funny ya koi special command zaroori nahi.
 • Message ka mood khud samjhega: funny → funny, rude/gaali → light roast, friendly → friendly, sad/problem → caring, serious → direct.
 • Reply ka style announce ya label nahi karega.
-• Set AI_API_KEY in Railway for real AI replies; without it local fallback persona use hogi.
+• AI_API_KEY set hona zaroori hai for real AI replies; warna local fallback persona use hogi.
 """
