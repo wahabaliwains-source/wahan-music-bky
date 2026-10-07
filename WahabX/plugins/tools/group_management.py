@@ -1,5 +1,6 @@
-# Reliable group management commands + new-member welcome.
+# Full group-management suite for WAHABX.
 from collections import defaultdict
+import re
 
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
@@ -9,6 +10,18 @@ import config
 from WahabX import app
 
 _WARNINGS = defaultdict(lambda: defaultdict(int))
+
+COMMANDS = {
+    "ban", "unban", "kick",
+    "mute", "unmute",
+    "promote", "demote",
+    "warn", "unwarn",
+    "del", "delete",
+    "purge",
+    "admins",
+}
+
+_COMMAND_RE = re.compile(r"^/([A-Za-z_]+)(?:@[\w_]+)?(?:\s+(.+))?$")
 
 
 def _is_owner(user_id: int) -> bool:
@@ -41,22 +54,30 @@ async def _bot_is_admin(message: Message) -> bool:
         return False
 
 
-async def _target(message: Message):
-    # Reply target has priority.
+async def _bot_is_owner(message: Message) -> bool:
+    try:
+        member = await app.get_chat_member(message.chat.id, "me")
+        return member.status == ChatMemberStatus.OWNER
+    except Exception:
+        return False
+
+
+async def _target(message: Message, argument: str | None = None):
     if message.reply_to_message and message.reply_to_message.from_user:
         return message.reply_to_message.from_user
 
-    if len(message.command) > 1:
-        value = message.command[1].strip()
-        # Support /ban @username and /ban user_id.
+    value = (argument or "").strip().split()[0] if argument else ""
+    if not value:
+        return None
+
+    value = value.lstrip("@")
+    try:
+        return await app.get_users(value)
+    except Exception:
         try:
-            return await app.get_users(value)
+            return await app.get_users(int(value))
         except Exception:
-            try:
-                return await app.get_users(int(value))
-            except Exception:
-                return None
-    return None
+            return None
 
 
 def _full_permissions():
@@ -69,6 +90,21 @@ def _full_permissions():
     )
 
 
+async def _require_bot_admin(message: Message) -> bool:
+    if await _bot_is_admin(message):
+        return True
+    await message.reply_text("❌ Mujhe group mein admin banao, phir ye command chalegi.")
+    return False
+
+
+async def _bot_is_owner(message: Message) -> bool:
+    try:
+        member = await app.get_chat_member(message.chat.id, "me")
+        return member.status == ChatMemberStatus.OWNER
+    except Exception:
+        return False
+
+
 @app.on_message(filters.new_chat_members & filters.group)
 async def welcome_new_members(client, message: Message):
     for user in message.new_chat_members:
@@ -77,79 +113,116 @@ async def welcome_new_members(client, message: Message):
         try:
             await message.reply_text(
                 f"Welcome {user.mention} 💗✨\n"
-                "COM E GIRLE 💋 yahan hai, enjoy karo aur music bajao 🎶"
+                "COM E GIRLE 💋 yahan hai — enjoy karo aur music bajao 🎶"
             )
         except Exception as e:
             print(f"[GROUP] Welcome failed: {type(e).__name__}: {e}")
 
 
-@app.on_message(
-    filters.command(
-        [
-            "ban", "unban", "kick", "mute", "unmute",
-            "promote", "demote", "warn", "unwarn",
-            "del", "delete", "purge",
-        ]
-    )
-    & filters.group
-)
+@app.on_message(filters.text & filters.group, group=20)
 async def group_management(client, message: Message):
-    if not await _is_admin(message):
+    if not message.from_user or not message.text:
         return
 
-    command = message.command[0].lower()
+    match = _COMMAND_RE.match(message.text.strip())
+    if not match:
+        return
 
-    # Delete/purge are handled before target lookup.
+    command = match.group(1).lower()
+    argument = match.group(2)
+    if command not in COMMANDS:
+        return
+
+    if not await _is_admin(message):
+        return await message.reply_text("❌ Sirf group admins ye command use kar sakte hain.")
+
     if command in ("del", "delete"):
+        if not await _require_bot_admin(message):
+            return
         if not message.reply_to_message:
-            return await message.reply_text("Reply karo jis message ko delete karna hai 💗")
-        if not await _bot_is_admin(message):
-            return await message.reply_text("❌ Pehle mujhe group mein admin banao.")
+            return await message.reply_text("❌ `/del` ko kisi message par reply karke use karo.")
         try:
             await message.reply_to_message.delete()
-            await message.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
         except Exception as e:
-            await message.reply_text(f"❌ Delete nahi ho saka: {str(e)[:120]}")
+            await message.reply_text(f"❌ Delete failed: {type(e).__name__}: {str(e)[:120]}")
         return
 
     if command == "purge":
-        if not await _bot_is_admin(message):
-            return await message.reply_text("❌ Pehle mujhe group mein admin banao.")
-        if not message.reply_to_message:
-            return await message.reply_text("Purge ke liye pehle message par reply karo 💗")
+        if not await _require_bot_admin(message):
+            return
         try:
-            chat_id = message.chat.id
-            start_id = message.reply_to_message.id
-            end_id = message.id
-            ids = list(range(start_id, end_id + 1))
-            await app.delete_messages(chat_id, ids, revoke=True)
+            count = 0
+            if argument:
+                count = max(1, min(int(argument.split()[0]), 100))
+            if count:
+                start = max(1, message.id - count + 1)
+                ids = list(range(start, message.id + 1))
+            elif message.reply_to_message:
+                ids = list(range(message.reply_to_message.id, message.id + 1))
+                ids = ids[-100:]
+            else:
+                return await message.reply_text(
+                    "❌ `/purge 22` ya kisi message par reply karke `/purge` use karo."
+                )
+
+            for i in range(0, len(ids), 100):
+                await app.delete_messages(message.chat.id, ids[i:i + 100], revoke=True)
+        except (TypeError, ValueError):
+            await message.reply_text("❌ Purge count number hona chahiye, example: `/purge 22`.")
         except Exception as e:
-            return await message.reply_text(f"❌ Purge nahi ho saka: {str(e)[:120]}")
+            await message.reply_text(f"❌ Purge failed: {type(e).__name__}: {str(e)[:120]}")
         return
 
-    target = await _target(message)
+    if command == "admins":
+        try:
+            admins = []
+            async for member in app.get_chat_members(
+                message.chat.id, filter="administrators"
+            ):
+                if member.user:
+                    admins.append(f"• {member.user.mention}")
+            if not admins:
+                return await message.reply_text("❌ Admin list nahi mili.")
+            return await message.reply_text(
+                "👑 **Group Admins**\n\n" + "\n".join(admins)
+            )
+        except Exception as e:
+            return await message.reply_text(
+                f"❌ Admin list nahi mil saki: {type(e).__name__}: {str(e)[:120]}"
+            )
+
+    target = await _target(message, argument)
     if not target:
         return await message.reply_text(
-            "Reply karo member ke message par, ya username/ID do 💗"
+            "❌ Member ko reply karo ya username/user ID do.\n"
+            "Example: `/ban @username`"
         )
 
     if target.id in config.OWNER_ID:
-        return await message.reply_text(
-            "Ye mere owner hain 😌 inko touch nahi kar sakti 💋"
-        )
+        return await message.reply_text("😌 Ye owner hain — inko touch nahi kar sakti 💗")
 
-    # Never let the bot try to moderate itself.
     try:
         me = await app.get_me()
         if target.id == me.id:
-            return await message.reply_text("Mujhe khud par ye action nahi karna 😭")
+            return await message.reply_text("😭 Main khud ko ye action nahi de sakti.")
     except Exception:
         pass
 
-    if not await _bot_is_admin(message):
-        return await message.reply_text("❌ Pehle mujhe group mein admin banao.")
+    if not await _require_bot_admin(message):
+        return
 
     try:
+        try:
+            target_member = await app.get_chat_member(message.chat.id, target.id)
+            if target_member.status == ChatMemberStatus.OWNER:
+                return await message.reply_text("❌ Group owner par ye action nahi ho sakta.")
+        except Exception:
+            target_member = None
+
         if command == "ban":
             await app.ban_chat_member(message.chat.id, target.id)
             return await message.reply_text(f"🚫 {target.mention} ban kar diya.")
@@ -180,6 +253,10 @@ async def group_management(client, message: Message):
             return await message.reply_text(f"🔊 {target.mention} unmute ho gaya.")
 
         if command == "promote":
+            if not await _bot_is_owner(message):
+                return await message.reply_text(
+                    "❌ Promote ke liye bot ko required admin hierarchy/rights chahiye."
+                )
             await app.promote_chat_member(
                 message.chat.id,
                 target.id,
@@ -190,7 +267,7 @@ async def group_management(client, message: Message):
                 can_pin_messages=True,
                 can_manage_video_chats=True,
             )
-            return await message.reply_text(f"⬆️ {target.mention} promote ho gaya.")
+            return await message.reply_text(f"⬆️ {target.mention} admin promote ho gaya.")
 
         if command == "demote":
             await app.promote_chat_member(
@@ -204,7 +281,7 @@ async def group_management(client, message: Message):
                 can_pin_messages=False,
                 can_manage_video_chats=False,
             )
-            return await message.reply_text(f"⬇️ {target.mention} demote ho gaya.")
+            return await message.reply_text(f"⬇️ {target.mention} admin demote ho gaya.")
 
         if command == "warn":
             _WARNINGS[message.chat.id][target.id] += 1
@@ -215,9 +292,7 @@ async def group_management(client, message: Message):
                 return await message.reply_text(
                     f"⚠️ 3 warnings complete — {target.mention} banned."
                 )
-            return await message.reply_text(
-                f"⚠️ {target.mention} warning {count}/3."
-            )
+            return await message.reply_text(f"⚠️ {target.mention} warning {count}/3.")
 
         if command == "unwarn":
             _WARNINGS[message.chat.id][target.id] = 0
@@ -234,13 +309,14 @@ async def group_management(client, message: Message):
 __MODULE__ = "Gʀᴏᴜᴘ Mᴀɴᴀɢᴇᴍᴇɴᴛ"
 __HELP__ = """
 **Gʀᴏᴜᴘ Mᴀɴᴀɢᴇᴍᴇɴᴛ:**
-• /ban /unban /kick
-• /mute /unmute
-• /promote /demote
-• /warn /unwarn — 3 warnings par ban
-• /del /delete — replied message delete
-• /purge — replied message se current message tak delete
-• Reply karke ya /command @username / user_id se target select karo.
-• Bot ko group mein required admin permissions dena zaroori hai.
-• New members ko automatic welcome.
+• `/ban`, `/unban`, `/kick` — reply/username/ID
+• `/mute`, `/unmute` — reply/username/ID
+• `/promote`, `/demote` — reply/username/ID
+• `/warn`, `/unwarn` — 3 warnings par ban
+• `/del` / `/delete` — replied message delete
+• `/purge 22` — last 22 messages delete
+• `/purge` — reply se purge
+• `/admins` — admin list
+• New members ko automatic welcome
+• Bot ko required admin permissions dena zaroori hai.
 """
