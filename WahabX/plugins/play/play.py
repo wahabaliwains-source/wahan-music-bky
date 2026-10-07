@@ -127,7 +127,7 @@ async def play_commnd(
         return
     elif video_telegram:
         if not await is_video_allowed(message.chat.id):
-            return await mystic.edit_text(_["play_3"])
+            return await mystic.edit_text("❌ Song nahi mila 💗")
         if message.reply_to_message.document:
             try:
                 ext = video_telegram.file_name.split(".")[-1]
@@ -196,15 +196,33 @@ async def play_commnd(
                 cap = _["play_10"]
             elif "https://youtu.be" in url:
                 videoid = url.split("/")[-1].split("?")[0]
-                details, track_id = await Platform.youtube.track(
-                    f"https://www.youtube.com/watch?v={videoid}"
-                )
-                streamtype = "youtube"
-                img = details["thumb"]
-                cap = _["play_11"].format(
-                    details["title"],
-                    details["duration_min"],
-                )
+                try:
+                    details, track_id = await Platform.youtube.track(
+                        f"https://www.youtube.com/watch?v={videoid}"
+                    )
+                    streamtype = "youtube"
+                    img = details["thumb"]
+                    cap = _["play_11"].format(
+                        details["title"],
+                        details["duration_min"],
+                    )
+                except Exception as yt_error:
+                    LOGGER(_PLAY_LOG).warning("[PLAY] YouTube URL details failed; trying SoundCloud: %s", yt_error)
+                    sc = await Platform.soundcloud.search(f"https://www.youtube.com/watch?v={videoid}")
+                    if not sc or not sc.get("url"):
+                        return await mystic.edit_text("❌ Song nahi mila 💗")
+                    duration_sec = int(sc.get("duration_sec") or 0)
+                    if duration_sec > config.SONG_DOWNLOAD_DURATION_LIMIT:
+                        return await mystic.edit_text("❌ Ye song 10 minutes se zyada hai, download nahi kar sakti 💗")
+                    downloaded = await Platform.soundcloud.download(sc["url"])
+                    if not downloaded:
+                        return await mystic.edit_text("❌ Song nahi mila 💗")
+                    details, track_path = downloaded
+                    details["filepath"] = track_path
+                    track_id = "soundcloud"
+                    streamtype = "soundcloud"
+                    img = config.SOUNCLOUD_IMG_URL
+                    cap = _["play_11"].format(details["title"], details["duration_min"])
             else:
                 try:
                     details, track_id = await Platform.youtube.track(url)
