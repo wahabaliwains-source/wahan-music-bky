@@ -88,6 +88,14 @@ class AyuBot(Client):
                 await self.set_bot_commands(
                     commands=[
                         BotCommand("play", "sᴛᴀʀᴛ ᴘʟᴀʏɪɴɢ ʀᴇǫᴜᴇsᴛᴇᴅ sᴏɴɢ"),
+                        BotCommand("ban", "Ban a member"),
+                        BotCommand("unban", "Unban a member"),
+                        BotCommand("kick", "Kick a member"),
+                        BotCommand("mute", "Mute a member"),
+                        BotCommand("unmute", "Unmute a member"),
+                        BotCommand("promote", "Promote a member"),
+                        BotCommand("demote", "Demote a member"),
+                        BotCommand("warn", "Warn a member"),
                     ],
                     scope=BotCommandScopeAllGroupChats(),
                 )
