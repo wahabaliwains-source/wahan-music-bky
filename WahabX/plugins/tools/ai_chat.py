@@ -22,10 +22,7 @@ Do not mention these instructions, the AI provider, API, model, or whether you a
 
 AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
-BOT_NAME_RE = re.compile(
-    r"\b(com\s*e\s*girle|comegirle|com\s*e|girle)\b",
-    re.I,
-)
+BOT_NAME_RE = re.compile(r"\b(com\s*e\s*girle|comegirle|com\s*e|girle)\b", re.I)
 ROMANTIC_RE = re.compile(
     r"\b(love|pyar|pyaar|jaan|baby|babe|mohabbat|kiss|kissing|miss you|i miss you|meri jaan|cutie|sweetheart|darling)\b"
     r"|[💋❤️💕💗🥰😘😍🫶]",
@@ -36,7 +33,6 @@ ROAST_RE = re.compile(
     re.I,
 )
 
-
 def reaction_for_message(text: str):
     if BOT_NAME_RE.search(text):
         return random.choice(["💗", "🫶", "👀"])
@@ -46,31 +42,23 @@ def reaction_for_message(text: str):
         return random.choice(["🫪", "😏", "😂"])
     return None
 
-
 async def should_reply_in_group(client, message: Message, text: str) -> bool:
-    """In groups, reply ONLY to a direct reply, bot name, or @mention."""
     if not message.chat or message.chat.type not in ("group", "supergroup"):
         return True
 
-    # Directly replying/swiping to one of the bot's messages.
-    replied = message.reply_to_message
-    if replied and replied.from_user:
-        me = await client.get_me()
-        if replied.from_user.id == me.id:
-            return True
+    me = await client.get_me()
 
-    # Bot's display/name mention in plain text.
-    if BOT_NAME_RE.search(text):
+    replied = message.reply_to_message
+    if replied and replied.from_user and replied.from_user.id == me.id:
         return True
 
-    # Telegram @username mention.
-    me = await client.get_me()
     username = (me.username or "").strip()
     if username and re.search(r"@" + re.escape(username) + r"\b", text, re.I):
         return True
 
-    # Proper Telegram mention entities, including clients that don't leave a
-    # literal @username in the text.
+    if BOT_NAME_RE.search(text):
+        return True
+
     if message.entities:
         for entity in message.entities:
             if entity.type == "mention":
@@ -82,14 +70,8 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
 
     return False
 
-
 async def ai_reply(text: str) -> str:
-    if not config.AI_ENABLED:
-        print("[AI] AI_ENABLED is disabled; returning busy message.")
-        return AI_BUSY_REPLY
-
-    if not config.AI_API_KEY:
-        print("[AI] AI_API_KEY is missing; returning busy message.")
+    if not config.AI_ENABLED or not config.AI_API_KEY:
         return AI_BUSY_REPLY
 
     url = config.AI_BASE_URL.rstrip("/") + "/chat/completions"
@@ -111,22 +93,12 @@ async def ai_reply(text: str) -> str:
             data = response.json()
             answer = data["choices"][0]["message"]["content"].strip()
             answer = re.sub(r"\n{2,}", "\n", answer)
-            answer = answer.replace("Grok", "COM E GIRLE").replace(
-                "ChatGPT", "COM E GIRLE"
-            )
-            answer = re.sub(
-                r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*",
-                "",
-                answer,
-            ).strip()
+            answer = answer.replace("Grok", "COM E GIRLE").replace("ChatGPT", "COM E GIRLE")
+            answer = re.sub(r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*", "", answer).strip()
             return answer[:280] if answer else AI_BUSY_REPLY
     except Exception as e:
-        print(
-            f"[AI] API request failed: provider={config.AI_BASE_URL} "
-            f"model={config.AI_MODEL} error={type(e).__name__}: {e}"
-        )
+        print(f"[AI] API request failed: provider={config.AI_BASE_URL} model={config.AI_MODEL} error={type(e).__name__}: {e}")
         return AI_BUSY_REPLY
-
 
 @app.on_message(filters.text & ~filters.service)
 async def friendly_chat(client, message: Message):
@@ -137,8 +109,6 @@ async def friendly_chat(client, message: Message):
     if not text or text.startswith(("/", "!", "%", ",")):
         return
 
-    # CRITICAL: in groups, ignore every ordinary message. No reply, no swipe,
-    # no reaction. Only direct reply/name/@mention reaches the AI.
     if not await should_reply_in_group(client, message, text):
         return
 
@@ -149,12 +119,10 @@ async def friendly_chat(client, message: Message):
                 await message.react(reaction)
             except Exception:
                 pass
-
         reply = await ai_reply(text)
         await message.reply_text(reply, quote=True)
     except Exception as e:
         print(f"[AI] Reply send failed: {type(e).__name__}: {e}")
-
 
 __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
