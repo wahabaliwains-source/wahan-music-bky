@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from pyrogram import filters
-from pyrogram.types import ChatType, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from WahabX import app
 
