@@ -2,8 +2,10 @@
 #
 # All rights reserved.
 import importlib
+import asyncio
 
 from pyrogram import idle
+from pyrogram.errors import FloodWait
 from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
@@ -36,7 +38,21 @@ async def init():
             BANNED_USERS.add(user_id)
     except Exception:
         pass
-    await app.start()
+    # Start the assistant first so a temporary bot-login flood limit does not
+    # prevent the userbot/voice assistant from coming online.
+    await userbot.start()
+    LOGGER("WahabX").info("Assistant Started Sucessfully")
+
+    while True:
+        try:
+            await app.start()
+            break
+        except FloodWait as e:
+            LOGGER("WahabX").error(
+                f"Bot login is flood-limited for {e.value} seconds. Keeping assistant online and waiting before retrying."
+            )
+            await asyncio.sleep(e.value + 5)
+
     LOGGER("WahabX").info("Validating premium emoji database...")
     try:
         await validate_db(app)
@@ -49,9 +65,7 @@ async def init():
             if hasattr(imported_module, "__HELP__") and imported_module.__HELP__:
                 HELPABLE[imported_module.__MODULE__.lower()] = imported_module
     LOGGER("WahabX.plugins").info("Successfully Imported All Modules ")
-    await userbot.start()
     await Ayush.start()
-    LOGGER("WahabX").info("Assistant Started Sucessfully")
     try:
         await Ayush.stream_call(
             "http://docs.evostream.com/sample_content/assets/sintel1m720p.mp4"
