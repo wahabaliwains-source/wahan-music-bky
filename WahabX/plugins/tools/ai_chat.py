@@ -4,6 +4,7 @@ import re
 
 import httpx
 from pyrogram import filters
+from pyrogram.enums import ChatType
 from pyrogram.types import Message
 
 import config
@@ -48,17 +49,19 @@ def reaction_for_message(text: str):
 
 
 async def should_reply_in_group(client, message: Message, text: str) -> bool:
-    if not message.chat or message.chat.type not in ("group", "supergroup"):
-        return True
+    if not message.chat:
+        return False
 
-    me = await client.get_me()
+    # Pyrogram exposes Chat.type as ChatType enum values. Treat only real
+    # groups/supergroups as group chats; never let a type-comparison failure
+    # accidentally turn the handler into an "answer every message" handler.
+    is_group = message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
+    if not is_group:
+        return True
 
     # Group trigger: ONLY when the exact bot name "COM E GIRLE" is used.
-    # Direct replies/swipes to bot messages are intentionally ignored.
-    if BOT_NAME_RE.search(text):
-        return True
-
-    return False
+    # Direct replies/swipes, dots, punctuation, and normal messages are ignored.
+    return bool(BOT_NAME_RE.search(text))
 
 
 async def ai_reply(text: str) -> str:
