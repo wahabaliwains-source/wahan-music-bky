@@ -21,10 +21,6 @@ API_HASH = getenv("API_HASH", "")
 BOT_TOKEN = getenv("BOT_TOKEN", "")
 
 
-# Database to save your chats and stats... 
-MONGO_DB_URI = getenv("MONGO_DB_URI", "")
-
-
 CLEANMODE_DELETE_MINS = int(
     getenv("CLEANMODE_MINS", "5")
 )  # Remember to give value in Seconds
