@@ -20,6 +20,9 @@ API_HASH = getenv("API_HASH", "")
 ## Get it from @Botfather in Telegram.
 BOT_TOKEN = getenv("BOT_TOKEN", "")
 
+# MongoDB connection (kept enabled for database-backed features)
+MONGO_DB_URI = getenv("MONGO_DB_URI", None)
+
 
 CLEANMODE_DELETE_MINS = int(
     getenv("CLEANMODE_MINS", "5")
