@@ -100,7 +100,7 @@ async def friendly_chat(client, message: Message):
     if not message.from_user or message.from_user.is_bot:
         return
     text = (message.text or "").strip()
-    if not text or text.startswith(("/", "!", "%", ",", "@", "#")):
+    if not text or text.startswith(("/", "!", "%", ",")):
         return
     try:
         reaction = pick_reaction(text)
