@@ -100,7 +100,8 @@ async def ai_reply(text: str) -> str:
             {"role": "user", "content": text[:2000]},
         ],
         "temperature": 0.9,
-        "max_completion_tokens": config.AI_MAX_TOKENS,
+        "reasoning_effort": "low",
+        "max_completion_tokens": max(300, config.AI_MAX_TOKENS),
     }
     headers = {"Authorization": f"Bearer {config.AI_API_KEY}"}
 
@@ -114,8 +115,22 @@ async def ai_reply(text: str) -> str:
             answer = answer.replace("Grok", "COM E GIRLE").replace("ChatGPT", "COM E GIRLE")
             answer = re.sub(r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*", "", answer).strip()
             return answer[:280] if answer else AI_BUSY_REPLY
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code if e.response is not None else "unknown"
+        try:
+            detail = e.response.text[:300] if e.response is not None else ""
+        except Exception:
+            detail = ""
+        print(
+            f"[AI] API request failed: provider={config.AI_BASE_URL} "
+            f"model={config.AI_MODEL} status={status} detail={detail}"
+        )
+        return AI_BUSY_REPLY
     except Exception as e:
-        print(f"[AI] API request failed: provider={config.AI_BASE_URL} model={config.AI_MODEL} error={type(e).__name__}: {e}")
+        print(
+            f"[AI] API request failed: provider={config.AI_BASE_URL} "
+            f"model={config.AI_MODEL} error={type(e).__name__}: {e}"
+        )
         return AI_BUSY_REPLY
 
 @app.on_message(filters.text & ~filters.service)
