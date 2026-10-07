@@ -118,7 +118,8 @@ async def friendly_chat(client, message: Message):
 __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
 **AI Cʜᴀᴛ:**
-• Replies to normal messages with short, friendly/funny responses.
-• Uses contextual reactions and light roast replies for gaali/rude messages.
-• Set AI_API_KEY in Railway for real AI replies; without it a local fallback persona is used.
+• Normal messages par khud reply karega — /funny ya koi special command zaroori nahi.
+• Message ka mood khud samjhega: funny → funny, rude/gaali → light roast, friendly → friendly, sad/problem → caring, serious → direct.
+• Reply ka style announce ya label nahi karega.
+• Set AI_API_KEY in Railway for real AI replies; without it local fallback persona use hogi.
 """
