@@ -1,9 +1,10 @@
 # Interactive Tic-Tac-Toe challenge game for group chats.
 import asyncio
+import uuid
 from dataclasses import dataclass, field
 
 from pyrogram import filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from pyrogram.types import ChatType, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from WahabX import app
 
@@ -20,7 +21,8 @@ class Game:
     turn: str = "X"
 
 
-_PENDING: dict[tuple[int, int], tuple[int, int]] = {}
+# token -> (chat_id, message_id, challenger_id, opponent_id)
+_PENDING: dict[str, tuple[int, int, int, int]] = {}
 _GAMES: dict[tuple[int, int], Game] = {}
 _LOCKS: dict[tuple[int, int], asyncio.Lock] = {}
 
@@ -42,16 +44,19 @@ def _board_keyboard(game: Game):
                 )
             )
         rows.append(buttons)
-    rows.append([
-        InlineKeyboardButton(
-            "🏳️ X SURRENDER",
-            callback_data=f"tttquit|{game.chat_id}|{game.message_id}|X",
-        ),
-        InlineKeyboardButton(
-            "🏳️ O SURRENDER",
-            callback_data=f"tttquit|{game.chat_id}|{game.message_id}|O",
-        ),
-    ])
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                "🏳️ X SURRENDER",
+                callback_data=f"tttquit|{game.chat_id}|{game.message_id}|X",
+            ),
+            InlineKeyboardButton(
+                "🏳️ O SURRENDER",
+                callback_data=f"tttquit|{game.chat_id}|{game.message_id}|O",
+            ),
+        ]
+    )
     return InlineKeyboardMarkup(rows)
 
 
@@ -80,126 +85,135 @@ def _winner(board):
     return None
 
 
-def _clear(key):
-    _PENDING.pop(key, None)
+def _clear_game(key):
     _GAMES.pop(key, None)
     _LOCKS.pop(key, None)
+    for token, pending in list(_PENDING.items()):
+        if pending[0] == key[0] and pending[1] == key[1]:
+            _PENDING.pop(token, None)
 
 
-@app.on_message(filters.text & filters.regex(r"^/(?:match|xmatch)(?:@[A-Za-z0-9_]+)?(?:\\s+.*)?$"), group=5)
+def _clear_player_pending(chat_id: int, *user_ids: int):
+    ids = set(user_ids)
+    for token, pending in list(_PENDING.items()):
+        if pending[0] == chat_id and (pending[2] in ids or pending[3] in ids):
+            _PENDING.pop(token, None)
+
+
+@app.on_message(filters.command(["match", "xmatch"]) & filters.group, group=5)
 async def create_match(client, message: Message):
     if not message.from_user or not message.chat:
         return
-    if str(message.chat.type) not in ("group", "supergroup"):
-        return
 
     if not message.reply_to_message or not message.reply_to_message.from_user:
-        return await message.reply_text(
-            "🎮 MATCH\n\n"
-            "Jisko match challenge karna hai, uske message par reply karke /match ya /xmatch bhejo."
+        await message.reply_text(
+            "🎮 **MATCH**\n\n"
+            "Jisko match challenge karna hai, uske message par reply karke "
+            "/match ya /xmatch bhejo."
         )
+        return
 
     challenger = message.from_user
     opponent = message.reply_to_message.from_user
 
     if opponent.id == challenger.id:
-        return await message.reply_text("😂 Khud ko match? Kisi aur ke message par reply karo.")
+        await message.reply_text("😂 Khud ko match? Kisi aur ke message par reply karo.")
+        return
 
     try:
-        me = await app.get_me()
+        me = await client.get_me()
         if opponent.id == me.id:
-            return await message.reply_text("😎 Mujhe match mein nahi bula sakte.")
+            await message.reply_text("😎 Mujhe match mein nahi bula sakte.")
+            return
     except Exception:
         pass
 
-    for old_key, players in list(_PENDING.items()):
-        if old_key[0] == message.chat.id and (
-            players[0] in (challenger.id, opponent.id)
-            or players[1] in (challenger.id, opponent.id)
-        ):
-            _PENDING.pop(old_key, None)
+    # Remove old challenges involving either player in this group.
+    _clear_player_pending(message.chat.id, challenger.id, opponent.id)
 
-    sent = await message.reply_text(
-        "⚔️ MATCH CHALLENGE\n\n"
-        f"❌ X — {challenger.mention}\n"
-        f"⭕ O — {opponent.mention}\n\n"
-        f"{opponent.mention}, tumhe match challenge mila hai!\n"
-        "Neeche ACCEPT ya DECLINE dabao.",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "✅ ACCEPT",
-                    callback_data=f"tttaccept|{message.chat.id}|PENDING",
-                ),
-                InlineKeyboardButton(
-                    "❌ DECLINE",
-                    callback_data=f"tttdecline|{message.chat.id}|PENDING",
-                ),
-            ]
-        ]),
-    )
+    token = uuid.uuid4().hex[:12]
+    try:
+        sent = await message.reply_text(
+            "⚔️ **MATCH CHALLENGE**\n\n"
+            f"❌ **X** — {challenger.mention}\n"
+            f"⭕ **O** — {opponent.mention}\n\n"
+            f"{opponent.mention}, tumhe match challenge mila hai!\n"
+            "Neeche **ACCEPT** ya **DECLINE** dabao.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "✅ ACCEPT",
+                            callback_data=f"tttaccept|{token}",
+                        ),
+                        InlineKeyboardButton(
+                            "❌ DECLINE",
+                            callback_data=f"tttdecline|{token}",
+                        ),
+                    ]
+                ]
+            ),
+        )
+    except Exception:
+        return
 
-    key = (message.chat.id, sent.id)
-    await sent.edit_reply_markup(
-        InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "✅ ACCEPT",
-                    callback_data=f"tttaccept|{message.chat.id}|{sent.id}",
-                ),
-                InlineKeyboardButton(
-                    "❌ DECLINE",
-                    callback_data=f"tttdecline|{message.chat.id}|{sent.id}",
-                ),
-            ]
-        ])
+    _PENDING[token] = (
+        message.chat.id,
+        sent.id,
+        challenger.id,
+        opponent.id,
     )
-    _PENDING[key] = (challenger.id, opponent.id)
 
 
 @app.on_callback_query(filters.regex(r"^ttt(?:accept|decline)\|"))
 async def match_response(client, query):
-    data = query.data.split("|")
-    if len(data) != 3:
-        return await query.answer("Invalid match.", show_alert=True)
+    data = query.data.split("|", 1)
+    if len(data) != 2:
+        await query.answer("Invalid match.", show_alert=True)
+        return
 
-    action, chat_id, message_id = data
-    if not message_id.isdigit():
-        return await query.answer("Match invalid hai.", show_alert=True)
-
-    key = (int(chat_id), int(message_id))
-    pending = _PENDING.get(key)
+    action, token = data
+    pending = _PENDING.get(token)
     if not pending:
-        return await query.answer("Ye match expire ho gaya.", show_alert=True)
+        await query.answer("Ye match expire ho gaya.", show_alert=True)
+        return
 
-    challenger_id, opponent_id = pending
+    chat_id, message_id, challenger_id, opponent_id = pending
+
     if query.from_user.id != opponent_id:
-        return await query.answer(
+        await query.answer(
             "Ye button sirf challenged player use kar sakta hai.",
             show_alert=True,
         )
+        return
+
+    key = (chat_id, message_id)
 
     if action == "tttdecline":
-        _clear(key)
-        return await query.edit_message_text(
-            "❌ MATCH DECLINED\n\nDono dobara /match se challenge kar sakte ho."
+        _PENDING.pop(token, None)
+        await query.edit_message_text(
+            "❌ **MATCH DECLINED**\n\n"
+            "Dono dobara /match se challenge kar sakte ho."
         )
+        await query.answer("Match declined.")
+        return
 
     try:
-        challenger = await app.get_users(challenger_id)
-        opponent = await app.get_users(opponent_id)
+        challenger = await client.get_users(challenger_id)
+        opponent = await client.get_users(opponent_id)
     except Exception:
-        return await query.answer("Players nahi mil rahe.", show_alert=True)
+        await query.answer("Players nahi mil rahe.", show_alert=True)
+        return
 
     game = Game(
-        chat_id=key[0],
-        message_id=key[1],
+        chat_id=chat_id,
+        message_id=message_id,
         x_id=challenger_id,
         o_id=opponent_id,
         x_name=_label(challenger),
         o_name=_label(opponent),
     )
-    _PENDING.pop(key, None)
+    _PENDING.pop(token, None)
     _GAMES[key] = game
     _LOCKS[key] = asyncio.Lock()
 
@@ -214,62 +228,69 @@ async def match_response(client, query):
 async def make_move(client, query):
     data = query.data.split("|")
     if len(data) != 4:
-        return await query.answer("Invalid move.", show_alert=True)
+        await query.answer("Invalid move.", show_alert=True)
+        return
 
     _, chat_id, message_id, cell = data
-    key = (int(chat_id), int(message_id))
-    game = _GAMES.get(key)
-    if not game:
-        return await query.answer("Match khatam ho gaya.", show_alert=True)
-
     try:
+        key = (int(chat_id), int(message_id))
         cell = int(cell)
     except ValueError:
-        return await query.answer("Invalid box.", show_alert=True)
+        await query.answer("Invalid move.", show_alert=True)
+        return
 
     if not 0 <= cell <= 8:
-        return await query.answer("Invalid box.", show_alert=True)
+        await query.answer("Invalid box.", show_alert=True)
+        return
+
+    game = _GAMES.get(key)
+    if not game:
+        await query.answer("Match khatam ho gaya.", show_alert=True)
+        return
 
     player_id = game.x_id if game.turn == "X" else game.o_id
     if query.from_user.id != player_id:
-        return await query.answer("Abhi tumhari turn nahi hai 😌", show_alert=True)
+        await query.answer("Abhi tumhari turn nahi hai 😌", show_alert=True)
+        return
 
     lock = _LOCKS.get(key)
     if lock is None:
-        return await query.answer("Match khatam ho gaya.", show_alert=True)
+        await query.answer("Match khatam ho gaya.", show_alert=True)
+        return
 
     async with lock:
         if game.board[cell]:
-            return await query.answer("Ye box already filled hai.", show_alert=True)
+            await query.answer("Ye box already filled hai.", show_alert=True)
+            return
 
         game.board[cell] = game.turn
         result = _winner(game.board)
 
         if result == "DRAW":
-            text = (
-                "🤝 MATCH DRAW!\n\n"
+            await query.edit_message_text(
+                "🤝 **MATCH DRAW!**\n\n"
                 f"❌ {game.x_name}\n"
                 f"⭕ {game.o_name}\n\n"
                 "Koi winner nahi — rematch karo 😎"
             )
-            await query.edit_message_text(text)
-            _clear(key)
-            return await query.answer("Draw!")
+            _clear_game(key)
+            await query.answer("Draw!")
+            return
 
         if result in ("X", "O"):
             winner_name = game.x_name if result == "X" else game.o_name
             loser_name = game.o_name if result == "X" else game.x_name
-            text = (
-                "🏆 MATCH FINISHED!\n\n"
+            await query.edit_message_text(
+                "🏆 **MATCH FINISHED!**\n\n"
                 f"❌ {game.x_name}\n"
                 f"⭕ {game.o_name}\n\n"
-                f"👑 WINNER: {winner_name}\n"
+                f"👑 **WINNER:** {winner_name}\n"
                 f"💀 Loser: {loser_name}\n\n"
                 f"🎉 {result} ne match jeet liya!"
             )
-            await query.edit_message_text(text)
-            _clear(key)
-            return await query.answer("Winner! 🏆")
+            _clear_game(key)
+            await query.answer("Winner! 🏆")
+            return
 
         game.turn = "O" if game.turn == "X" else "X"
         await query.edit_message_text(
@@ -283,29 +304,37 @@ async def make_move(client, query):
 async def surrender(client, query):
     data = query.data.split("|")
     if len(data) != 4:
-        return await query.answer("Invalid.", show_alert=True)
+        await query.answer("Invalid.", show_alert=True)
+        return
 
     _, chat_id, message_id, symbol = data
-    key = (int(chat_id), int(message_id))
+    try:
+        key = (int(chat_id), int(message_id))
+    except ValueError:
+        await query.answer("Invalid.", show_alert=True)
+        return
+
     game = _GAMES.get(key)
     if not game:
-        return await query.answer("Match khatam ho gaya.", show_alert=True)
+        await query.answer("Match khatam ho gaya.", show_alert=True)
+        return
 
     player_id = game.x_id if symbol == "X" else game.o_id
     if query.from_user.id != player_id:
-        return await query.answer("Ye surrender button tumhara nahi hai.", show_alert=True)
+        await query.answer("Ye surrender button tumhara nahi hai.", show_alert=True)
+        return
 
     winner_symbol = "O" if symbol == "X" else "X"
     winner_name = game.o_name if winner_symbol == "O" else game.x_name
     loser_name = game.x_name if symbol == "X" else game.o_name
 
     await query.edit_message_text(
-        "🏆 MATCH FINISHED!\n\n"
-        f"👑 WINNER: {winner_name} ({winner_symbol})\n"
+        "🏆 **MATCH FINISHED!**\n\n"
+        f"👑 **WINNER:** {winner_name} ({winner_symbol})\n"
         f"🏳️ Surrender: {loser_name} ({symbol})\n\n"
         "Rematch ke liye /match use karo."
     )
-    _clear(key)
+    _clear_game(key)
     await query.answer("Surrender recorded.")
 
 
@@ -313,9 +342,10 @@ __MODULE__ = "Mᴀᴛᴄʜ Gᴀᴍᴇ"
 __HELP__ = """
 **Mᴀᴛᴄʜ Gᴀᴍᴇ:**
 • Kisi member ke message par reply karke /match
+• /xmatch bhi same game start karega
 • Challenged player ko ACCEPT / DECLINE buttons milenge
 • Accept ke baad X vs O Tic-Tac-Toe start hoga
-• Apni turn par board ka box tap karo
+• Sirf jiski turn hai woh board press kar sakta hai
 • 3 in a row = winner
 • Surrender option bhi available
 """
