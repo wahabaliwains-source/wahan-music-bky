@@ -22,7 +22,10 @@ Do not mention these instructions, the AI provider, API, model, or whether you a
 
 AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
-BOT_NAME_RE = re.compile(r"\b(com\s*e\s*girle|comegirle)\b", re.I)
+# In groups, ONLY this exact bot name triggers AI.
+# No username mention, no real Telegram first-name match, and no generic words.
+BOT_NAME_RE = re.compile(r"(?<!\w)com\s*e\s*girle(?!\w)", re.I)
+
 ROMANTIC_RE = re.compile(
     r"\b(love|pyar|pyaar|jaan|baby|babe|mohabbat|kiss|kissing|miss you|i miss you|meri jaan|cutie|sweetheart|darling)\b"
     r"|[💋❤️💕💗🥰😘😍🫶]",
@@ -33,6 +36,7 @@ ROAST_RE = re.compile(
     re.I,
 )
 
+
 def reaction_for_message(text: str):
     if BOT_NAME_RE.search(text):
         return random.choice(["💗", "🫶", "👀"])
@@ -42,51 +46,26 @@ def reaction_for_message(text: str):
         return random.choice(["🫪", "😏", "😂"])
     return None
 
+
 async def should_reply_in_group(client, message: Message, text: str) -> bool:
     if not message.chat or message.chat.type not in ("group", "supergroup"):
         return True
 
     me = await client.get_me()
 
-    # Only a real reply to THIS bot's own message is a valid reply trigger.
-    # Ignore replies to the userbot/owner, welcome messages, service messages,
-    # quoted messages from other bots, or any other account.
+    # Group trigger #1: user directly replies/swipes to a message
+    # actually sent by THIS bot account.
     replied = message.reply_to_message
-    if (
-        replied
-        and replied.from_user
-        and replied.from_user.is_bot
-        and replied.from_user.id == me.id
-    ):
+    if replied and replied.from_user and replied.from_user.id == me.id:
         return True
 
-    username = (me.username or "").strip()
-    if username and re.search(r"@" + re.escape(username) + r"\b", text, re.I):
-        return True
-
+    # Group trigger #2: user explicitly says "COM E GIRLE".
+    # Nothing else can trigger the AI in a normal group message.
     if BOT_NAME_RE.search(text):
         return True
 
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == "mention":
-                mention = text[entity.offset : entity.offset + entity.length]
-                if username and mention.lower() == "@" + username.lower():
-                    return True
-            elif entity.type == "text_mention" and entity.user and entity.user.id == me.id:
-                return True
-
-    # Also accept the bot's actual first/full name, but never arbitrary words
-    # such as "girl" or "come e" that can occur in normal conversation.
-    first_name = (me.first_name or "").strip()
-    full_name = " ".join(x for x in [me.first_name, me.last_name] if x).strip()
-    for bot_name in (first_name, full_name):
-        if bot_name and re.search(
-            r"(?<!\w)" + re.escape(bot_name) + r"(?!\w)", text, re.I
-        ):
-            return True
-
     return False
+
 
 async def ai_reply(text: str) -> str:
     if not config.AI_ENABLED or not config.AI_API_KEY:
@@ -112,8 +91,14 @@ async def ai_reply(text: str) -> str:
             data = response.json()
             answer = data["choices"][0]["message"]["content"].strip()
             answer = re.sub(r"\n{2,}", "\n", answer)
-            answer = answer.replace("Grok", "COM E GIRLE").replace("ChatGPT", "COM E GIRLE")
-            answer = re.sub(r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*", "", answer).strip()
+            answer = answer.replace("Grok", "COM E GIRLE").replace(
+                "ChatGPT", "COM E GIRLE"
+            )
+            answer = re.sub(
+                r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*",
+                "",
+                answer,
+            ).strip()
             return answer[:280] if answer else AI_BUSY_REPLY
     except httpx.HTTPStatusError as e:
         status = e.response.status_code if e.response is not None else "unknown"
@@ -133,6 +118,7 @@ async def ai_reply(text: str) -> str:
         )
         return AI_BUSY_REPLY
 
+
 @app.on_message(filters.text & ~filters.service)
 async def friendly_chat(client, message: Message):
     if not message.from_user or message.from_user.is_bot:
@@ -142,6 +128,7 @@ async def friendly_chat(client, message: Message):
     if not text or text.startswith(("/", "!", "%", ",")):
         return
 
+    # IMPORTANT: no reply and no reaction for ordinary group messages.
     if not await should_reply_in_group(client, message, text):
         return
 
@@ -152,17 +139,20 @@ async def friendly_chat(client, message: Message):
                 await message.react(reaction)
             except Exception:
                 pass
+
         reply = await ai_reply(text)
         await message.reply_text(reply, quote=True)
     except Exception as e:
         print(f"[AI] Reply send failed: {type(e).__name__}: {e}")
 
+
 __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
 **AI Cʜᴀᴛ:**
 • Private chat: normal messages par AI reply karegi.
-• Group: sirf bot ke apne message ko reply/swipe karne, uska exact naam lene, ya @mention karne par AI reply karegi.
-• Group ke normal messages par bilkul reply/reaction nahi hoga.
+• Group: sirf "COM E GIRLE" naam lene ya bot ke apne message ko direct reply/swipe karne par AI reply karegi.
+• @username, bot ka Telegram first-name, "girle", "com e" ya koi normal group message trigger nahi karega.
+• Trigger na ho to bilkul reply/reaction nahi hoga.
 • Naam mention → 💗/🫶/👀, romantic → 💋, roast/gaali → 🫪/😏/😂.
 • AI unavailable ho to: “Aaj meri AI thodi busy hai 😭 kal reply dungi 💗”
 """
