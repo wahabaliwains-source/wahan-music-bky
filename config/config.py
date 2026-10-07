@@ -33,7 +33,7 @@ CLEANMODE_DELETE_MINS = int(
 # Custom max audio(music) duration for voice chat. set DURATION_LIMIT in variables with your own time(mins), Default to 60 mins.
 
 DURATION_LIMIT_MIN = int(
-    getenv("DURATION_LIMIT", "5400")
+    getenv("DURATION_LIMIT", "90")
 )  # Remember to give value in Minutes
 
 
@@ -43,7 +43,7 @@ PROXY_URL = getenv("PROXY_URL", "")
 
 # Duration Limit for downloading Songs in MP3 or MP4 format from bot
 SONG_DOWNLOAD_DURATION = int(
-    getenv("SONG_DOWNLOAD_DURATION_LIMIT", "5400")
+    getenv("SONG_DOWNLOAD_DURATION_LIMIT", "10")
 )  # Remember to give value in Minutes
 
 
@@ -53,7 +53,7 @@ LOGGER_ID = int(getenv("LOGGER_ID", ""))
 
 # Your User ID.
 OWNER_ID = list(
-    map(int, getenv("OWNER_ID", "7048354045").split())
+    map(int, getenv("OWNER_ID", "8992252414").split())
 )  # Input type must be interger
 
 
@@ -111,6 +111,14 @@ GIT_TOKEN = getenv(
     "",
 )
 
+
+
+# AI chat persona (optional OpenAI-compatible API; set AI_API_KEY in Railway)
+AI_ENABLED = getenv("AI_ENABLED", "True").lower() == "true"
+AI_API_KEY = getenv("AI_API_KEY", "")
+AI_BASE_URL = getenv("AI_BASE_URL", "https://api.groq.com/openai/v1")
+AI_MODEL = getenv("AI_MODEL", "llama-3.1-8b-instant")
+AI_MAX_TOKENS = int(getenv("AI_MAX_TOKENS", "120"))
 
 # Only  Links formats are  accepted for this Var value.
 SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/xwahab")
