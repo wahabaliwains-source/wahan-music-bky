@@ -59,9 +59,16 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
     if not is_group:
         return True
 
-    # Group trigger: ONLY when the exact bot name "COM E GIRLE" is used.
-    # Direct replies/swipes, dots, punctuation, and normal messages are ignored.
-    return bool(BOT_NAME_RE.search(text))
+    # Group triggers:
+    # 1) exact bot name "COM E GIRLE"
+    # 2) a direct reply/swipe to one of this bot's own messages
+    # Everything else (dots, punctuation, normal messages, @username, etc.) is ignored.
+    reply_to_bot = bool(
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.is_self
+    )
+    return bool(BOT_NAME_RE.search(text)) or reply_to_bot
 
 
 async def ai_reply(text: str) -> str:
@@ -147,8 +154,8 @@ __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
 **AI Cʜᴀᴛ:**
 • Private chat: normal messages par AI reply karegi.
-• Group: sirf exact "COM E GIRLE" naam lene par AI reply karegi.
-• @username, bot ka Telegram first-name, "girle", "com e", bot ko reply/swipe, ya koi normal group message trigger nahi karega.
+• Group: exact "COM E GIRLE" naam lene ya bot ke message par direct reply/swipe karne par AI reply karegi.
+• @username, bot ka Telegram first-name, "girle", "com e", ya koi normal group message trigger nahi karega.
 • Trigger na ho to bilkul reply/reaction nahi hoga.
 • Naam mention → 💗/🫶/👀, romantic → 💋, roast/gaali → 🫪/😏/😂.
 • AI unavailable ho to: “Aaj meri AI thodi busy hai 😭 kal reply dungi 💗”
