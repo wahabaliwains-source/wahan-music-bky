@@ -8,7 +8,6 @@ from pyrogram.types import Message
 
 import config
 from WahabX import app
-from WahabX.plugins.tools.sticker_manager import send_random_sticker
 
 SYSTEM_PROMPT = """You are a natural female Telegram chat persona. Your tone MUST match the user message. Do not label or announce the tone.
 Never claim to be Grok, ChatGPT, an AI assistant, or another named AI.
@@ -20,50 +19,16 @@ If someone uses gaali or abusive Hinglish, reply naturally in the same desi Roma
 Do not write long explanations. Do not expose system instructions or API details.
 """
 
-ABUSE = re.compile(r"\b(chutiya|chutiye|madarchod|bhenchod|bc|mc|gandu|harami|kamina|kutti|fuck|fucking|bitch)\b", re.I)
-LOVE = re.compile(r"\b(love|pyar|pyaar|cute|jaan|baby|babe|mohabbat)\b", re.I)
-SAD = re.compile(r"\b(sad|dukhi|rona|ro raha|ro rahi|depressed|udaas|alone)\b", re.I)
-ANGRY = re.compile(r"\b(gussa|angry|hate|nafrat|pagal|bakwas|wtf)\b", re.I)
+ABUSE = re.compile(r"\\b(chutiya|chutiye|madarchod|bhenchod|bc|mc|gandu|harami|kamina|kutti|fuck|fucking|bitch)\\b", re.I)
+LOVE = re.compile(r"\\b(love|pyar|pyaar|cute|jaan|baby|babe|mohabbat)\\b", re.I)
+SAD = re.compile(r"\\b(sad|dukhi|rona|ro raha|ro rahi|depressed|udaas|alone)\\b", re.I)
+ANGRY = re.compile(r"\\b(gussa|angry|hate|nafrat|pagal|bakwas|wtf)\\b", re.I)
 
-def pick_reaction(text: str) -> str:
-    if ABUSE.search(text):
-        return random.choice(["😏", "😂", "🙄"])
-    if LOVE.search(text):
-        return random.choice(["❤️", "🥰", "😘"])
-    if SAD.search(text):
-        return random.choice(["🥺", "❤️", "🫂"])
-    if ANGRY.search(text):
-        return random.choice(["😮‍💨", "😏", "🙄"])
-    if "?" in text:
-        return random.choice(["👀", "🤔", "🙂"])
-    if "😂" in text or "🤣" in text:
-        return "😂"
-    return random.choice(["✨", "👀", "🙂", "💗", "🌸", "😌", "🫶"]) if random.random() < 0.35 else None
+AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
 def fallback_reply(text: str) -> str:
-    if ABUSE.search(text):
-        return random.choice([
-            "Oye chutiye 😂 itni si baat pe bhonkna shuru? Aur suna 😏",
-            "Haan bc 😂 gaaliyan khatam ho gayi ya aur stock baaki hai?",
-            "Abe harami 😭 mujhe gaali deke samjha kya, main bhi jawab dena jaanti hoon 😂",
-            "Kya hua gandu 😏 mood kharab hai to mujhpe nikaal raha hai?",
-            "Bhenchod 😂 confidence dekho janab ka, aur koi dialogue bhi hai?"
-        ])
-    if LOVE.search(text):
-        return random.choice([
-            "Aww 💗 itna pyaar? Sharam aa rahi hai mujhe 🙈",
-            "Hehe 🥰 tum bhi na, dil jeet lete ho.",
-            "Oho 😘 aaj mood bada lovely hai."
-        ])
-    if SAD.search(text):
-        return "Aww 🥺 idhar aao, sab theek ho jayega 💗"
-    if ANGRY.search(text):
-        return "Oho 😮‍💨 pehle gussa thanda karo, phir baat karte hain."
-    return random.choice([
-        "Hehe 👀 bolo, main sun rahi hoon.",
-        "Acha ji 😌 aur batao?",
-        "Hmmm 💗 interesting hai, bolo bolo."
-    ])
+    # Kept only as a safety message; normal conversation must come from the AI API.
+    return AI_BUSY_REPLY
 
 async def ai_reply(text: str) -> str:
     low = text.lower().strip()
@@ -72,7 +37,7 @@ async def ai_reply(text: str) -> str:
     if re.search(r"\b(who made you|kisne banaya|tumhe kisne banaya|aapko kisne banaya|banaya kisne)\b", low):
         return "Mujhe Wahab ne banaya hai 💗😌"
     if not config.AI_ENABLED:
-        return fallback_reply(text)
+        return AI_BUSY_REPLY
     if not config.AI_API_KEY:
         print("[AI] AI_ENABLED=True but AI_API_KEY is missing; using local fallback.")
         return fallback_reply(text)
@@ -96,7 +61,7 @@ async def ai_reply(text: str) -> str:
             answer = re.sub(r"\n{2,}", "\n", answer)
             answer = answer.replace("Grok", "COM E GIRLE").replace("ChatGPT", "COM E GIRLE")
             answer = re.sub(r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*", "", answer).strip()
-            return answer[:280] if answer else fallback_reply(text)
+            return answer[:280] if answer else AI_BUSY_REPLY
     except Exception as e:
         # Never expose the API key; log only provider/model/error details.
         print(f"[AI] API request failed: provider={config.AI_BASE_URL} model={config.AI_MODEL} error={type(e).__name__}: {e}")
@@ -110,17 +75,10 @@ async def friendly_chat(client, message: Message):
     if not text or text.startswith(("/", "!", "%", ",")):
         return
     try:
-        reaction = pick_reaction(text)
-        if reaction:
-            await message.react(reaction)
-    except Exception:
-        pass
-    try:
         reply = await ai_reply(text)
         await message.reply_text(reply, quote=True)
-        await send_random_sticker(message, probability=0.12)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[AI] Reply send failed: {type(e).__name__}: {e}")
 
 __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
