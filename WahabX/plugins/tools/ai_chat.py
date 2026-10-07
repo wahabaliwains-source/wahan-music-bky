@@ -64,6 +64,11 @@ def fallback_reply(text: str) -> str:
     ])
 
 async def ai_reply(text: str) -> str:
+    low = text.lower().strip()
+    if re.search(r"\\b(who are you|tum kon ho|aap kon ho|ap kon ho|naam kya hai|name kya hai)\\b", low):
+        return "Main COM E GIRLE 💋 hoon 😌 bas tumhari cute si chat wali girl."
+    if re.search(r"\\b(who made you|kisne banaya|tumhe kisne banaya|aapko kisne banaya|banaya kisne)\\b", low):
+        return "Mujhe Wahab ne banaya hai 💗😌"
     if not config.AI_ENABLED or not config.AI_API_KEY:
         return fallback_reply(text)
     url = config.AI_BASE_URL.rstrip("/") + "/chat/completions"
