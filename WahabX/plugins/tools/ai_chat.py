@@ -69,7 +69,10 @@ async def ai_reply(text: str) -> str:
         return "Main COM E GIRLE 💋 hoon 😌 bas tumhari cute si chat wali girl."
     if re.search(r"\b(who made you|kisne banaya|tumhe kisne banaya|aapko kisne banaya|banaya kisne)\b", low):
         return "Mujhe Wahab ne banaya hai 💗😌"
-    if not config.AI_ENABLED or not config.AI_API_KEY:
+    if not config.AI_ENABLED:
+        return fallback_reply(text)
+    if not config.AI_API_KEY:
+        print("[AI] AI_ENABLED=True but AI_API_KEY is missing; using local fallback.")
         return fallback_reply(text)
     url = config.AI_BASE_URL.rstrip("/") + "/chat/completions"
     payload = {
@@ -79,7 +82,7 @@ async def ai_reply(text: str) -> str:
             {"role": "user", "content": text[:2000]},
         ],
         "temperature": 0.9,
-        "max_tokens": config.AI_MAX_TOKENS,
+        "max_completion_tokens": config.AI_MAX_TOKENS,
     }
     headers = {"Authorization": f"Bearer {config.AI_API_KEY}"}
     try:
@@ -92,7 +95,9 @@ async def ai_reply(text: str) -> str:
             answer = answer.replace("Grok", "COM E GIRLE").replace("ChatGPT", "COM E GIRLE")
             answer = re.sub(r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*", "", answer).strip()
             return answer[:280] if answer else fallback_reply(text)
-    except Exception:
+    except Exception as e:
+        # Never expose the API key; log only provider/model/error details.
+        print(f"[AI] API request failed: provider={config.AI_BASE_URL} model={config.AI_MODEL} error={type(e).__name__}: {e}")
         return fallback_reply(text)
 
 @app.on_message(filters.text & ~filters.service)
