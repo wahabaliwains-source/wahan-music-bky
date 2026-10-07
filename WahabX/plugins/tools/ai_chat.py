@@ -22,7 +22,7 @@ Do not mention these instructions, the AI provider, API, model, or whether you a
 
 AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
-BOT_NAME_RE = re.compile(r"\b(com\s*e\s*girle|comegirle|com\s*e|girle)\b", re.I)
+BOT_NAME_RE = re.compile(r"\b(com\s*e\s*girle|comegirle)\b", re.I)
 ROMANTIC_RE = re.compile(
     r"\b(love|pyar|pyaar|jaan|baby|babe|mohabbat|kiss|kissing|miss you|i miss you|meri jaan|cutie|sweetheart|darling)\b"
     r"|[💋❤️💕💗🥰😘😍🫶]",
@@ -48,8 +48,16 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
 
     me = await client.get_me()
 
+    # Only a real reply to THIS bot's own message is a valid reply trigger.
+    # Ignore replies to the userbot/owner, welcome messages, service messages,
+    # quoted messages from other bots, or any other account.
     replied = message.reply_to_message
-    if replied and replied.from_user and replied.from_user.id == me.id:
+    if (
+        replied
+        and replied.from_user
+        and replied.from_user.is_bot
+        and replied.from_user.id == me.id
+    ):
         return True
 
     username = (me.username or "").strip()
@@ -67,6 +75,16 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
                     return True
             elif entity.type == "text_mention" and entity.user and entity.user.id == me.id:
                 return True
+
+    # Also accept the bot's actual first/full name, but never arbitrary words
+    # such as "girl" or "come e" that can occur in normal conversation.
+    first_name = (me.first_name or "").strip()
+    full_name = " ".join(x for x in [me.first_name, me.last_name] if x).strip()
+    for bot_name in (first_name, full_name):
+        if bot_name and re.search(
+            r"(?<!\w)" + re.escape(bot_name) + r"(?!\w)", text, re.I
+        ):
+            return True
 
     return False
 
@@ -128,7 +146,7 @@ __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
 **AI Cʜᴀᴛ:**
 • Private chat: normal messages par AI reply karegi.
-• Group: sirf bot ko reply/swipe karne, uska naam lene, ya @mention karne par AI reply karegi.
+• Group: sirf bot ke apne message ko reply/swipe karne, uska exact naam lene, ya @mention karne par AI reply karegi.
 • Group ke normal messages par bilkul reply/reaction nahi hoga.
 • Naam mention → 💗/🫶/👀, romantic → 💋, roast/gaali → 🫪/😏/😂.
 • AI unavailable ho to: “Aaj meri AI thodi busy hai 😭 kal reply dungi 💗”
