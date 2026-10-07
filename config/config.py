@@ -116,7 +116,7 @@ GIT_TOKEN = getenv(
 AI_ENABLED = getenv("AI_ENABLED", "True").lower() == "true"
 AI_API_KEY = getenv("AI_API_KEY", "")
 AI_BASE_URL = getenv("AI_BASE_URL", "https://api.groq.com/openai/v1")
-AI_MODEL = getenv("AI_MODEL", "llama-3.1-8b-instant")
+AI_MODEL = getenv("AI_MODEL", "openai/gpt-oss-20b")
 AI_MAX_TOKENS = int(getenv("AI_MAX_TOKENS", "120"))
 
 # Only  Links formats are  accepted for this Var value.
