@@ -86,15 +86,17 @@ def _clear(key):
     _LOCKS.pop(key, None)
 
 
-@app.on_message(filters.command("match") & filters.group, group=15)
+@app.on_message(filters.text & filters.regex(r"^/(?:match|xmatch)(?:@[A-Za-z0-9_]+)?(?:\\s+.*)?$"), group=5)
 async def create_match(client, message: Message):
-    if not message.from_user:
+    if not message.from_user or not message.chat:
+        return
+    if str(message.chat.type) not in ("group", "supergroup"):
         return
 
     if not message.reply_to_message or not message.reply_to_message.from_user:
         return await message.reply_text(
             "🎮 MATCH\n\n"
-            "Jisko match challenge karna hai, uske message par reply karke /match bhejo."
+            "Jisko match challenge karna hai, uske message par reply karke /match ya /xmatch bhejo."
         )
 
     challenger = message.from_user
