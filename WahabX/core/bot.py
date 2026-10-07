@@ -5,6 +5,8 @@
 
 
 import sys
+from pathlib import Path
+from pyrogram.errors import FloodWait
 
 from pyrogram import Client
 from pyrogram.enums import ChatMemberStatus
@@ -32,11 +34,18 @@ class AyuBot(Client):
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             bot_token=config.BOT_TOKEN,
-            in_memory=True,
+            in_memory=False,
+            workdir=str(Path("tempdb")),
         )
 
     async def start(self):
-        await super().start()
+        try:
+            await super().start()
+        except FloodWait as e:
+            LOGGER(__name__).error(
+                f"Bot Telegram login is temporarily flood-limited. Waiting {e.value} seconds instead of crash-looping."
+            )
+            raise
         get_me = await self.get_me()
         self.username = get_me.username
         self.id = get_me.id
