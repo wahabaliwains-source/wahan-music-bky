@@ -97,14 +97,6 @@ async def _require_bot_admin(message: Message) -> bool:
     return False
 
 
-async def _bot_is_owner(message: Message) -> bool:
-    try:
-        member = await app.get_chat_member(message.chat.id, "me")
-        return member.status == ChatMemberStatus.OWNER
-    except Exception:
-        return False
-
-
 @app.on_message(filters.new_chat_members & filters.group)
 async def welcome_new_members(client, message: Message):
     for user in message.new_chat_members:
