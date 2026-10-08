@@ -16,7 +16,7 @@ RPS_ICON = "5391272000545110592"
 CARD_ICON = "5794222529425973097"
 QUIZ_ICON = "5816864153901471073"
 DICE_ICON = "5265035481422244702"
-MINE_ICON = "6001197209578639333"
+MINE_ICON = "5265035481422244702"
 
 GAMES = {}
 LOCKS = defaultdict(asyncio.Lock)
@@ -145,7 +145,7 @@ def _mine_board(game, finished=False, exploded=None):
             if exploded is not None and p == exploded:
                 label, callback = "💥", "mg:mine:noop"
             elif p in game["opened"]:
-                label, callback = str(_mine_count(p, game["mines"]) or "·"), f"mg:mine:open:{p}"
+                label, callback = str(_mine_count(p, game["mines"]) or "·"), "mg:mine:noop"
             elif finished and p in game["mines"]:
                 label, callback = "💥", "mg:mine:noop"
             else:
@@ -258,8 +258,10 @@ async def game_callbacks(client, query):
 
         if typ == "rps":
             if data.endswith(":start"):
+                game["moves"] = {}
                 await query.message.edit_text(
-                    "✊ **RPS Battle**\n\n" + _players_text(game["players"]) + "\n\nApni move choose karo.",
+                    "✊ **RPS Battle**\n\n" + _players_text(game["players"]) +
+                    "\n\nApni move choose karo. Tumhari choice baaki players ko nahi dikhayi jayegi.",
                     reply_markup=InlineKeyboardMarkup([[
                         _button("Rock", "mg:rps:rock", RPS_ICON),
                         _button("Paper", "mg:rps:paper", RPS_ICON),
@@ -268,42 +270,58 @@ async def game_callbacks(client, query):
                 )
                 await query.answer()
                 return
+
             move = data.rsplit(":", 1)[-1]
             if move in RPS:
                 if uid not in game["players"]:
                     await query.answer("Pehle Join karo.", show_alert=True)
                     return
+                if uid in game["moves"]:
+                    await query.answer("Tumhari move already lock ho chuki hai.", show_alert=True)
+                    return
+
+                # Store the move silently. Keep the shared buttons visible so the
+                # next player can choose; never reveal the actual move before all
+                # players have submitted.
                 game["moves"][uid] = move
-                await query.answer(f"{RPS[move]} locked!")
-                if len(game["moves"]) < len(game["players"]):
-                    move_lines = []
-                    for player_id, player_name in game["players"].items():
-                        chosen_move = game["moves"].get(player_id)
-                        if chosen_move:
-                            move_lines.append(f"• **{player_name}** chose {RPS[chosen_move]} {chosen_move.title()}")
-                        else:
-                            move_lines.append(f"• **{player_name}** is choosing…")
+                remaining = len(game["players"]) - len(game["moves"])
+                if remaining > 0:
+                    await query.answer("Move locked 🔒 — baaki player choose karein.")
                     await query.message.edit_text(
-                        "✊ **RPS Battle**\n\n"
-                        + "\n".join(move_lines)
-                        + f"\n\nMoves received: {len(game['moves'])}/{len(game['players'])}\n"
-                        "Jab sab choose kar lenge, winner automatically show hoga."
+                        "✊ **RPS Battle**\n\n" +
+                        _players_text(game["players"]) +
+                        f"\n\nMoves received: {len(game['moves'])}/{len(game['players'])}" +
+                        "\n\nApni move choose karo — choices hidden hain.",
+                        reply_markup=InlineKeyboardMarkup([[
+                            _button("Rock", "mg:rps:rock", RPS_ICON),
+                            _button("Paper", "mg:rps:paper", RPS_ICON),
+                            _button("Scissors", "mg:rps:scissors", RPS_ICON),
+                        ]]),
                     )
                     return
+
                 counts = defaultdict(int)
                 for m in game["moves"].values():
                     counts[m] += 1
                 if len(counts) == 1 or len(counts) == 3:
-                    result = "Draw! 😗"
+                    result = "Draw"
+                    winners = []
+                    losers = []
                 else:
                     winning = next(m for m in counts if all(m == x or x == RPS_WIN[m] for x in counts))
                     winners = [game["players"][p] for p, m in game["moves"].items() if m == winning]
+                    losers = [game["players"][p] for p, m in game["moves"].items() if m != winning]
                     result = "Winner: **" + ", ".join(winners) + "**"
                 moves_text = "\n".join(
-                    f"• **{game['players'][p]}** chose {RPS[m]} {m.title()}"
+                    f"• **{game['players'][p]}** — {RPS[m]}"
                     for p, m in game["moves"].items()
                 )
-                await query.message.edit_text(f"✊ **RPS Result**\n\n{moves_text}\n\n🏆 {result}")
+                if winners:
+                    result += "\n\n🏆 **WIN:** " + ", ".join(winners) + "\n💔 **LOSE:** " + ", ".join(losers)
+                else:
+                    result += "\n\n🤝 **Draw — koi winner nahi.**"
+                await query.message.edit_text(f"✊ **RPS Result**\n\n{moves_text}\n\n{result}")
+                await query.answer("Result ready!")
                 GAMES.pop(chat_id, None)
                 return
 
@@ -391,7 +409,7 @@ async def game_callbacks(client, query):
             await query.answer("💥 Ye box already reveal ho chuka hai.", show_alert=True)
             return
 
-        if typ == "mine" and data.endswith(":open"):
+        if typ == "mine" and data.startswith("mg:mine:open:"):
             if uid not in game["players"]:
                 await query.answer("Pehle Join karo.", show_alert=True)
                 return
@@ -416,7 +434,7 @@ async def game_callbacks(client, query):
                 )
                 await query.answer("💥 BOOM! Tum mine par click kar gaye.", show_alert=True)
                 GAMES.pop(chat_id, None)
-                returnreturn
+                return
             safe_total = 25 - len(game["mines"])
             if len(game["opened"]) >= safe_total:
                 await query.message.edit_text(
