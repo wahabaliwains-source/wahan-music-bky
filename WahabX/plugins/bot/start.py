@@ -7,6 +7,7 @@ import time
 from py_yt import VideosSearch
 from pyrogram import filters
 from pyrogram.enums import ChatType, ParseMode
+from pyrogram import raw
 from pyrogram.types import InlineKeyboardMarkup, Message
 
 import config
@@ -41,6 +42,13 @@ loop = asyncio.get_running_loop()
 @LanguageStart
 async def start_comm(client, message: Message, _):
     chat_id = message.chat.id
+    try:
+        await message.react(emoji=raw.types.ReactionCustomEmoji(document_id=5852937227738291816))
+    except Exception:
+        try:
+            await message.react(emoji="😘")
+        except Exception:
+            pass
     await add_served_user(message.from_user.id)
     if len(message.text.split()) > 1:
         name = message.text.split(None, 1)[1]
