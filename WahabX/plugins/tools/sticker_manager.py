@@ -196,9 +196,22 @@ async def sticker_reply_handler(client, message: Message):
     # Do not rely on filters.reply here: some PyroBlack builds do not set
     # that filter consistently for Telegram's "reply/swipe" sticker UI.
     replied = getattr(message, "reply_to_message", None)
+
+    # Some Telegram/PyroBlack updates only expose reply_to_message_id.
+    # Resolve the replied message explicitly so sticker replies cannot be missed.
+    if replied is None:
+        reply_id = getattr(message, "reply_to_message_id", None)
+        if reply_id:
+            try:
+                replied = await client.get_messages(message.chat.id, reply_id)
+            except Exception as e:
+                print(f"[STICKER] REPLY_RESOLVE_FAILED: {type(e).__name__}: {e}")
+                replied = None
+
     if not replied:
-        print("[STICKER] STICKER_RECEIVED -> no reply_to_message")
+        print("[STICKER] STICKER_RECEIVED -> no replied message")
         return
+
     replied_sticker = getattr(replied, "sticker", None)
     if not replied_sticker:
         print("[STICKER] STICKER_RECEIVED -> replied message is not a sticker")
@@ -214,10 +227,29 @@ async def sticker_reply_handler(client, message: Message):
 
     try:
         await _show_sticker_choosing(client, message.chat.id)
-        await client.send_sticker(chat_id=message.chat.id, sticker=chosen, reply_to_message_id=message.id)
+        await client.send_sticker(
+            chat_id=message.chat.id,
+            sticker=chosen,
+            reply_to_message_id=message.id,
+        )
         print("[STICKER] REPLY_TRIGGERED -> random sticker sent")
     except Exception as e:
+        # If a cached pack file_id becomes stale, never silently fail:
+        # send the known-good Telegram sticker as an emergency reply.
         print(f"[STICKER] REPLY_SEND_FAILED: {type(e).__name__}: {e}")
+        if chosen != SEED_STICKER_FILE_ID:
+            try:
+                await client.send_sticker(
+                    chat_id=message.chat.id,
+                    sticker=SEED_STICKER_FILE_ID,
+                    reply_to_message_id=message.id,
+                )
+                print("[STICKER] FALLBACK_REPLY_TRIGGERED -> seed sticker sent")
+            except Exception as fallback_error:
+                print(
+                    f"[STICKER] FALLBACK_REPLY_FAILED: "
+                    f"{type(fallback_error).__name__}: {fallback_error}"
+                )
 
 
 @app.on_message(filters.command(["sticker", "savestickerpack"]))
