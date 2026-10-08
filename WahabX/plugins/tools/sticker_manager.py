@@ -142,6 +142,7 @@ async def sticker_manager(client, message: Message):
         before = len(items)
         pack_name = getattr(sticker, "set_name", None)
         pack_loaded = False
+    pack_id = None
 
         if pack_name:
             try:
@@ -158,6 +159,8 @@ async def sticker_manager(client, message: Message):
                 pack_loaded = bool(pack_stickers)
             except Exception as e:
                 print(f"[STICKER] pack load failed: {type(e).__name__}: {e}")
+                # Some sticker sets cannot be expanded by the bot account.
+                # Keep the triggering sticker, but never pretend the whole pack was saved.
 
         # Always save at least the sticker used with the command.
         file_id = getattr(sticker, "file_id", None)
@@ -170,10 +173,12 @@ async def sticker_manager(client, message: Message):
 
         if pack_name and pack_loaded:
             pack_text = f"Pack: {pack_name}"
+            if pack_id:
+                pack_text += f"\\nPack ID: {pack_id}"
         elif pack_name:
-            pack_text = f"Pack: {pack_name} (single sticker saved)"
+            pack_text = f"Pack: {pack_name} (sirf ye sticker save hua)"
         else:
-            pack_text = "Single sticker"
+            pack_text = "Single sticker (pack nahi mila)"
 
         await message.reply_text(
             f"Sticker save ho gaye 💗\n"
