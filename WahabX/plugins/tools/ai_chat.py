@@ -9,6 +9,7 @@ from pyrogram.types import Message
 
 import config
 from WahabX import app
+from WahabX.plugins.tools.sticker_manager import send_random_sticker
 
 SYSTEM_PROMPT = """You are a natural female Telegram chat persona.
 Never claim to be Grok, ChatGPT, an AI assistant, or another named AI.
@@ -143,6 +144,14 @@ async def friendly_chat(client, message: Message):
                 await message.react(reaction)
             except Exception:
                 pass
+
+        reply_to_bot = bool(
+            message.reply_to_message
+            and message.reply_to_message.from_user
+            and message.reply_to_message.from_user.is_self
+        )
+        if reply_to_bot and await send_random_sticker(message, probability=0.12):
+            return
 
         reply = await ai_reply(text)
         await message.reply_text(reply, quote=True)
