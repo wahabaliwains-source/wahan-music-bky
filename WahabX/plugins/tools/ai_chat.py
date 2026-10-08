@@ -35,7 +35,7 @@ ROMANTIC_RE = re.compile(
     re.I,
 )
 ROAST_RE = re.compile(
-    r"(?:\\b(chutiya|chutiye|chutiye|madarchod|madarchod|bhenchod|behenchod|bc|mc|gandu|gaand|harami|kamina|kamine|bakwas|pagal|idiot|stupid|fuck|fucking|bitch|asshole|son of a bitch|randi|lund|chut|bsdk|bhosd|bhosdike|teri maa|maa ki|behen ki)\\b)",
+    r"\b(chutiya|chutiye|madarchod|bhenchod|behenchod|bc|mc|gandu|gaand|harami|kamina|kamine|bakwas|pagal|idiot|stupid|fuck|fucking|bitch|asshole|son of a bitch|randi|lund|chut|bsdk|bhosd|bhosdike|teri maa|maa ki|behen ki)\b",
     re.I,
 )
 
