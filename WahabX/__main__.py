@@ -67,6 +67,14 @@ async def init():
 
     LOGGER("WahabX.plugins").info("Successfully Imported All Modules")
 
+    # Automatically clear old sticker data and load the complete fixed pack.
+    try:
+        from WahabX.plugins.tools.sticker_manager import preload_fixed_sticker_pack
+        count = await preload_fixed_sticker_pack(app)
+        LOGGER("WahabX").info(f"Sticker pack auto-loaded: {count} stickers")
+    except Exception as e:
+        LOGGER("WahabX").warning(f"Sticker pack auto-load failed: {type(e).__name__}: {e}")
+
     # Start PyTgCalls once. Do not perform a fake stream/join/leave test at
     # startup; that test was creating an unnecessary Telegram voice request.
     await Ayush.start()
