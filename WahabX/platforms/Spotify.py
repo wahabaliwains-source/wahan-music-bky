@@ -17,21 +17,55 @@ class Spotify:
         self.regex = r"^(https:\/\/open.spotify.com\/)(.*)$"
         self.client_id = config.SPOTIFY_CLIENT_ID
         self.client_secret = config.SPOTIFY_CLIENT_SECRET
-        if config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET:
+        self.market = getattr(config, "SPOTIFY_MARKET", "US")
+        self.spotify = None
+        if self.client_id and self.client_secret:
             self.client_credentials_manager = SpotifyClientCredentials(
-                self.client_id, self.client_secret
+                client_id=self.client_id,
+                client_secret=self.client_secret,
             )
             self.spotify = spotipy.Spotify(
                 client_credentials_manager=self.client_credentials_manager
             )
-        else:
-            self.spotify = None
 
     async def valid(self, link: str):
         if re.search(self.regex, link):
             return True
         else:
             return False
+
+
+    async def search(self, query: str):
+        """Search Spotify catalog metadata only; never download Spotify audio."""
+        if not self.spotify or not query:
+            return False
+
+        def _search():
+            result = self.spotify.search(
+                q=query,
+                type="track",
+                market=self.market,
+                limit=5,
+            )
+            tracks = result.get("tracks", {}).get("items", [])
+            if not tracks:
+                return False
+            for track in tracks:
+                artists = [a.get("name", "") for a in track.get("artists", [])]
+                title = track.get("name") or ""
+                if not title:
+                    continue
+                return {
+                    "title": title,
+                    "artists": artists,
+                    "query": " ".join([title, *artists]).strip(),
+                    "url": (track.get("external_urls") or {}).get("spotify"),
+                    "duration_ms": track.get("duration_ms") or 0,
+                    "thumb": ((track.get("album", {}).get("images") or [{}])[0]).get("url"),
+                }
+            return False
+
+        return await asyncify(_search)()
 
     async def track(self, link: str):
         track = self.spotify.track(link)
