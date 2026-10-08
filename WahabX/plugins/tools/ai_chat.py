@@ -1,10 +1,11 @@
 # AI-only Telegram chat persona with strict group targeting.
+import asyncio
 import random
 import re
 
 import httpx
 from pyrogram import filters
-from pyrogram.enums import ChatType
+from pyrogram.enums import ChatAction, ChatType
 from pyrogram.types import Message
 
 import config
@@ -70,6 +71,17 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
         and message.reply_to_message.from_user.is_self
     )
     return bool(BOT_NAME_RE.search(text)) or reply_to_bot
+
+
+async def _typing_loop(client, chat_id):
+    try:
+        while True:
+            await client.send_chat_action(chat_id, ChatAction.TYPING)
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        return
 
 
 async def ai_reply(text: str) -> str:
@@ -153,7 +165,20 @@ async def friendly_chat(client, message: Message):
         if reply_to_bot and await send_random_sticker(message, probability=0.12):
             return
 
-        reply = await ai_reply(text)
+        # Keep Telegram's "typing..." indicator visible while the AI is
+        # generating the response. It is refreshed every few seconds.
+        typing_task = asyncio.create_task(
+            _typing_loop(client, message.chat.id)
+        )
+        try:
+            reply = await ai_reply(text)
+        finally:
+            typing_task.cancel()
+            try:
+                await typing_task
+            except asyncio.CancelledError:
+                pass
+
         await message.reply_text(reply, quote=True)
     except Exception as e:
         print(f"[AI] Reply send failed: {type(e).__name__}: {e}")
