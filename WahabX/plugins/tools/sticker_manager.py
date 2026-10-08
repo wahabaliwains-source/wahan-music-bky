@@ -142,12 +142,13 @@ async def sticker_manager(client, message: Message):
         before = len(items)
         pack_name = getattr(sticker, "set_name", None)
         pack_loaded = False
-    pack_id = None
+        pack_id = None
 
         if pack_name:
             try:
                 sticker_set = await client.get_sticker_set(pack_name)
                 pack_stickers = getattr(sticker_set, "stickers", None) or []
+                pack_id = getattr(sticker_set, "id", None)
 
                 for item in pack_stickers:
                     file_id = getattr(item, "file_id", None)
