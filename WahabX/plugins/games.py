@@ -1,6 +1,8 @@
 import asyncio
 import random
 import re
+import json
+import httpx
 from collections import defaultdict
 
 from pyrogram import filters
@@ -8,6 +10,7 @@ from pyrogram.enums import ButtonStyle
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from WahabX import app
+import config
 
 RPS_ICON = "5391272000545110592"
 CARD_ICON = "5794222529425973097"
@@ -104,7 +107,7 @@ async def dice_start(client, message):
 async def quiz_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
-        GAMES[chat_id] = {"type": "quiz", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "scores": {}, "question": None, "answered": set(), "round": 0}
+        GAMES[chat_id] = {"type": "quiz", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "scores": {}, "question": None, "answered": set(), "round": 0, "used_questions": set()}
         kb = [[_button("Join", "mg:quiz:join", QUIZ_ICON, ButtonStyle.SUCCESS),
                _button("Start Quiz", "mg:quiz:start", QUIZ_ICON),
                _button("Cancel", "mg:quiz:cancel", QUIZ_ICON, ButtonStyle.DANGER)]]
@@ -115,7 +118,14 @@ async def quiz_start(client, message):
 
 
 def _new_mines():
-    return {"type": "mines", "host": None, "mines": set(random.sample(range(25), 5)), "opened": set(), "players": {}}
+    return {
+        "type": "mines",
+        "host": None,
+        "mines": set(random.sample(range(25), 5)),
+        "opened": set(),
+        "players": {},
+        "started": False,
+    }
 
 
 def _mine_count(pos, mines):
@@ -152,9 +162,10 @@ async def mines_start(client, message):
         game["host"] = message.from_user.id
         game["players"][message.from_user.id] = _name(message.from_user)
         await message.reply_text(
-            "💣 **Minesweeper 5×5**\n\nHost already joined. Baaki players **Join** dabayein.\nBoard turant active hai; safe cells choose karo.\n5 hidden mines hain — mine mili to BOOM!",
+            "💣 **Minesweeper 5×5**\n\nHost already joined. Baaki players **Join** dabayein.\nKam az kam 2 players ke baad **Start** host karega.\nStart se pehle board open nahi hoga.",
             reply_markup=InlineKeyboardMarkup([[
                 _button("Join", "mg:mine:join", MINE_ICON, ButtonStyle.SUCCESS),
+                _button("Start", "mg:mine:start", MINE_ICON),
                 _button("Cancel", "mg:mine:cancel", MINE_ICON, ButtonStyle.DANGER),
             ]]),
         )
@@ -192,10 +203,17 @@ async def game_callbacks(client, query):
                 return
             players[uid] = name
             if typ == "mine":
+                if game.get("started"):
+                    await query.answer("Game already start ho chuki hai.", show_alert=True)
+                    return
                 await query.message.edit_text(
                     "💣 **Minesweeper 5×5**\n\nPlayers:\n" + _players_text(players) +
-                    "\n\nSafe box choose karo:",
-                    reply_markup=_mine_board(game),
+                    "\n\n2 players complete hone ke baad host Start dabaye.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        _button("Join", "mg:mine:join", MINE_ICON, ButtonStyle.SUCCESS),
+                        _button("Start", "mg:mine:start", MINE_ICON),
+                        _button("Cancel", "mg:mine:cancel", MINE_ICON, ButtonStyle.DANGER),
+                    ]]),
                 )
             else:
                 icon = {"rps": RPS_ICON, "card": CARD_ICON, "dice": DICE_ICON, "quiz": QUIZ_ICON}[typ]
@@ -217,6 +235,23 @@ async def game_callbacks(client, query):
 
         if data.endswith(":start") and not is_host:
             await query.answer("Sirf host game start kar sakta hai.", show_alert=True)
+            return
+
+        if typ == "mine" and data.endswith(":start"):
+            if game.get("started"):
+                await query.answer("Minesweeper already started.", show_alert=True)
+                return
+            if len(game["players"]) < 2:
+                await query.answer("Pehle kam az kam 2 players Join karein.", show_alert=True)
+                return
+            game["started"] = True
+            await query.message.edit_text(
+                "💣 **Minesweeper 5×5**\n\nPlayers:\n"
+                + _players_text(game["players"])
+                + "\n\nGame START! Safe box choose karo. 5 hidden mines hain.",
+                reply_markup=_mine_board(game),
+            )
+            await query.answer("Game started!")
             return
 
         if typ == "rps":
@@ -354,6 +389,9 @@ async def game_callbacks(client, query):
             if uid not in game["players"]:
                 await query.answer("Pehle Join karo.", show_alert=True)
                 return
+            if not game.get("started"):
+                await query.answer("Host ne abhi game start nahi ki. Pehle 2 players Join karein.", show_alert=True)
+                return
             pos = int(data.rsplit(":", 1)[-1])
             if pos in game["opened"]:
                 await query.answer("Ye box already open hai.")
@@ -381,6 +419,63 @@ async def game_callbacks(client, query):
             )
 
 
+async def _ai_quiz_question(game):
+    """Generate a fresh MCQ with Groq; fall back to an unused local question."""
+    used = game.setdefault("used_questions", set())
+    prompt = (
+        "Create ONE fresh multiple-choice quiz question for a Telegram game. "
+        "It must have exactly 4 options and exactly one correct answer. "
+        "Keep it factual, unambiguous, family-safe, and medium difficulty. "
+        "Question can be English or simple Roman Urdu/Hinglish. "
+        "Do not repeat any previous question. Return ONLY valid JSON in this exact shape: "
+        '{"question":"...","options":["...","...","...","..."],"answer":0}. '
+        "answer is the zero-based index 0-3. "
+        f"Previous questions to avoid: {list(used)[-8:]}"
+    )
+    if config.AI_ENABLED and config.AI_API_KEY:
+        try:
+            url = config.AI_BASE_URL.rstrip("/") + "/chat/completions"
+            payload = {
+                "model": config.AI_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You generate reliable quiz questions only. Output JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 1.0,
+                "max_completion_tokens": 220,
+            }
+            headers = {"Authorization": f"Bearer {config.AI_API_KEY}"}
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                raw_answer = response.json()["choices"][0]["message"]["content"].strip()
+                raw_answer = re.sub(r"^\\`\\`\\`(?:json)?\\s*|\\s*\\`\\`\\`$", "", raw_answer, flags=re.I | re.S).strip()
+                item = json.loads(raw_answer)
+                q = str(item["question"]).strip()
+                options = [str(x).strip() for x in item["options"]]
+                answer = int(item["answer"])
+                if (
+                    q
+                    and q not in used
+                    and len(options) == 4
+                    and all(options)
+                    and len(set(x.casefold() for x in options)) == 4
+                    and 0 <= answer < 4
+                ):
+                    used.add(q)
+                    return q, options, answer
+        except Exception as e:
+            print(f"[GAME][QUIZ_AI] generation failed: {type(e).__name__}: {e}")
+
+    available = [item for item in QUIZ_BANK if item[0] not in used]
+    if not available:
+        used.clear()
+        available = QUIZ_BANK[:]
+    q, options, answer = random.choice(available)
+    used.add(q)
+    return q, options, answer
+
+
 async def _quiz_question(query, game):
     game["round"] += 1
     if game["round"] > 5:
@@ -390,7 +485,7 @@ async def _quiz_question(query, game):
         await query.message.edit_text(f"🏆 **Quiz Finished!**\n\n{result}\n\nWinner: **{winner}**")
         GAMES.pop(query.message.chat.id, None)
         return
-    q, options, answer = random.choice(QUIZ_BANK)
+    q, options, answer = await _ai_quiz_question(game)
     game["question"] = (q, options, answer)
     game["answered"] = set()
     rows = [[_button(f"{chr(65+i)}. {option}", f"mg:quiz:ans:{game['round']}:{i}", QUIZ_ICON)] for i, option in enumerate(options)]
