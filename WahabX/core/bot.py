@@ -1,10 +1,7 @@
-
 # All rights reserved.
 #
-
-
-
 import sys
+import hashlib
 from pathlib import Path
 from pyrogram.errors import FloodWait
 
@@ -28,9 +25,14 @@ from ..logging import LOGGER
 
 class AyuBot(Client):
     def __init__(self):
-        LOGGER(__name__).info(f"Starting Bot")
+        LOGGER(__name__).info("Starting Bot")
+        # Keep the bot session persistent to avoid Telegram auth flood limits,
+        # but derive the session name from the current BOT_TOKEN. This prevents
+        # an old bot session from being reused after BOT_TOKEN is changed.
+        token_key = hashlib.sha256(config.BOT_TOKEN.encode("utf-8")).hexdigest()[:16]
+        session_name = f"WahabX_{token_key}"
         super().__init__(
-            "WahabX",
+            session_name,
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             bot_token=config.BOT_TOKEN,
@@ -58,7 +60,7 @@ class AyuBot(Client):
   🎵 **{self.mention}** 🎵
 ╚══════════════════════╝
 
-⚡ **ʙᴏᴛ sᴛᴀʀᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ**
+⚡ **ᴘʀᴇᴍɪᴜᴍ ʙᴏᴛ sᴛᴀʀᴛᴇᴅ** ⚡
 
 ┌──────────────────────┐
 │ 🔑 **ɪᴅ :** <code>{self.id}</code>
@@ -82,10 +84,8 @@ class AyuBot(Client):
             LOGGER(__name__).error(
                 "Bot has failed to access the log Group. Make sure that you have added your bot to your log channel and promoted as admin!"
             )
-            # sys.exit()
         if config.SET_CMDS == str(True):
             try:
-
                 await self.set_bot_commands(
                     commands=[
                         BotCommand("start", "sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
@@ -116,21 +116,13 @@ class AyuBot(Client):
                         BotCommand("resume", "ʀᴇsᴜᴍᴇ ᴛʜᴇ ᴘᴀᴜsᴇᴅ sᴏɴɢ"),
                         BotCommand("end", "ᴄʟᴇᴀʀ ᴛʜᴇ ǫᴜᴇᴜᴇ ᴀᴍᴅ ʟᴇᴀᴠᴇ ᴠᴏɪᴄᴇᴄʜᴀᴛ"),
                         BotCommand("shuffle", "ʀᴀɴᴅᴏᴍʟʏ sʜᴜғғʟᴇs ᴛʜᴇ ǫᴜᴇᴜᴇᴅ ᴘʟᴀʏʟɪsᴛ."),
-                        BotCommand(
-                            "playmode",
-                            "ᴀʟʟᴏᴡs ʏᴏᴜ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇ ᴅᴇғᴀᴜʟᴛ ᴘʟᴀʏᴍᴏᴅᴇ ғᴏʀ ʏᴏᴜʀ ᴄʜᴀᴛ",
-                        ),
-                        BotCommand(
-                            "settings",
-                            "Oᴘᴇɴ ᴛʜᴇ sᴇᴛᴛɪɴɢs ᴏғ ᴛʜᴇ ᴍᴜsɪᴄ ʙᴏᴛ ғᴏʀ ʏᴏᴜʀ ᴄʜᴀᴛ.",
-                        ),
+                        BotCommand("playmode", "ᴀʟʟᴏᴡs ʏᴏᴜ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇ ᴅᴇғᴀᴜʟᴛ ᴘʟᴀʏᴍᴏᴅᴇ ғᴏʀ ʏᴏᴜʀ ᴄʜᴀᴛ"),
+                        BotCommand("settings", "Oᴘᴇɴ ᴛʜᴇ sᴇᴛᴛɪɴɢs ᴏғ ᴛʜᴇ ᴍᴜsɪᴄ ʙᴏᴛ ғᴏʀ ʏᴏᴜʀ ᴄʜᴀᴛ."),
                     ],
                     scope=BotCommandScopeAllChatAdministrators(),
                 )
             except:
                 pass
-        else:
-            pass
         try:
             a = await self.get_chat_member(config.LOGGER_ID, self.id)
             if a.status != ChatMemberStatus.ADMINISTRATOR:
