@@ -464,40 +464,67 @@ async def play_commnd(
             streamtype = "youtube"
         except Exception as e:
             LOGGER(_PLAY_LOG).warning(
-                "[PLAY] YouTube search failed after %.1fs; trying SoundCloud: %s",
+                "[PLAY] YouTube search failed after %.1fs; trying Spotify metadata then SoundCloud: %s",
                 _time.monotonic() - track_t0,
                 e,
             )
-            sc = await Platform.soundcloud.search(query)
+
+            spotify_result = False
+            try:
+                spotify_result = await Platform.spotify.search(query)
+            except Exception as spotify_error:
+                LOGGER(_PLAY_LOG).warning(
+                    "[PLAY] Spotify metadata search failed: %s", spotify_error
+                )
+
+            fallback_query = query
+            if spotify_result:
+                fallback_query = spotify_result.get("query") or query
+                LOGGER(
+                    _PLAY_LOG,
+                    "[PLAY] Spotify resolved query='%s'",
+                    fallback_query[:100],
+                )
+
+            sc = await Platform.soundcloud.search(fallback_query)
+            if not sc or not sc.get("url"):
+                if fallback_query != query:
+                    sc = await Platform.soundcloud.search(query)
+
             if not sc or not sc.get("url"):
                 try:
                     await notify_owner(
-                        "Play.track + SoundCloud fallback",
+                        "Play.track + Spotify/SoundCloud fallback",
                         e,
                         f"query={query[:80]} user={user_id} chat={message.chat.id}",
                     )
                 except Exception:
                     pass
-                return await mystic.edit_text(_["play_3"])
+                return await mystic.edit_text("❌ Song nahi mila 💗")
+
             try:
                 duration_sec = int(sc.get("duration_sec") or 0)
                 if duration_sec > config.DURATION_LIMIT:
                     return await mystic.edit_text(
                         _["play_6"].format(config.DURATION_LIMIT_MIN, sc["duration_min"])
                     )
-                details, track_path = await Platform.soundcloud.download(sc["url"])
+                downloaded = await Platform.soundcloud.download(sc["url"])
+                if not downloaded:
+                    return await mystic.edit_text("❌ Song nahi mila 💗")
+                details, track_path = downloaded
                 details["filepath"] = track_path
                 streamtype = "soundcloud"
                 track_id = "soundcloud"
                 img = config.SOUNCLOUD_IMG_URL
                 LOGGER(_PLAY_LOG).info(
-                    "[PLAY] SoundCloud fallback selected: %s", details.get("title", query)[:60]
+                    "[PLAY] SoundCloud fallback selected: %s",
+                    details.get("title", fallback_query)[:60],
                 )
             except Exception as sc_error:
                 LOGGER(_PLAY_LOG).error(
                     "[PLAY] SoundCloud fallback failed: %s", sc_error, exc_info=True
                 )
-                return await mystic.edit_text(_["play_3"])
+                return await mystic.edit_text("❌ Song nahi mila 💗")
     if str(playmode) == "Direct" and not plist_type:
         if details["duration_min"]:
             duration_sec = time_to_seconds(details["duration_min"])
