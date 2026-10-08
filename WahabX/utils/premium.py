@@ -25,6 +25,52 @@ EMOJI_DB_PATH = os.environ.get(
 
 _emoji_db = None
 
+# User-supplied Telegram Premium custom-emoji document IDs.
+# These are the ONLY custom-emoji IDs used by the bot. Duplicate Unicode
+# emojis intentionally keep all supplied IDs so the renderer can randomize.
+USER_PREMIUM_EMOJI_IDS = {
+    "⭐": ["5222471711273805619", "5220032887109215279"],
+    "🤩": ["5219712813261415477", "5219810794350337525", "5219972847761385245", "5219685587463725426"],
+    "🪽": ["5221977656890778299"],
+    "👾": ["5222095107066455032"],
+    "💀": ["5222340293864482387", "5219728210719172884"],
+    "🦋": ["5219935219552903855"],
+    "©️": ["5220196413694042317"],
+    "😳": ["5273831583034387128"],
+    "💋": ["5458401493273028098", "5453871595560904326"],
+    "🥰": ["5415716506262579065", "5194994829796320313", "5192921700622152098"],
+    "😭": ["5413832630527337487"],
+    "😬": ["5274177087383549163"],
+    "😐": ["5411375797564876539"],
+    "🫣": ["5433895608177927897"],
+    "😔": ["5420299356626495672"],
+    "❤️": ["5422572163125224263", "5244904531619258202"],
+    "🐈": [
+        "5298624286045544863", "5298679897282096620", "5298984758355732893",
+        "5298850081066229949", "5298742887272455477", "5298850484793157860",
+        "5298658418150647256", "5298583423726692563", "5299026179020332586",
+        "5298970370215292158", "5298833386528350713", "5298831629886727061",
+        "5298789522027359841", "5299029000813849835", "5298818281128369837",
+        "5298882211716572992",
+    ],
+}
+
+_PREMIUM_ONLY_FALLBACKS = {
+    "✨": "⭐", "★": "⭐", "✭": "⭐", "✮": "⭐", "✯": "⭐", "✬": "⭐", "✧": "⭐",
+    "🔥": "👾", "💖": "❤️", "💕": "❤️", "💗": "❤️", "💞": "❤️",
+    "😎": "🤩", "😊": "🥰", "🙂": "🥰", "😂": "🤩", "🤣": "🤩", "😍": "🥰",
+    "😘": "💋", "😉": "🤩", "😅": "🤩", "😢": "😭", "😥": "😔", "😓": "😔",
+    "😮": "😳", "😲": "😳", "😱": "😳", "😶": "😐", "🙃": "😬",
+    "🎵": "⭐", "🎶": "⭐", "🎧": "🪽", "🎤": "👾", "🎬": "👾",
+    "🚀": "🪽", "📱": "🪽", "💻": "👾", "🔊": "👾", "🔇": "😐",
+    "🔄": "⭐", "🔁": "⭐", "🔀": "⭐", "⏩": "⭐", "⏪": "⭐", "▶": "⭐",
+    "⏸": "😐", "⏹": "💀", "❌": "💀", "✅": "🥰", "☑️": "🥰", "⚡": "⭐",
+    "⚙️": "👾", "🔐": "💀", "🔍": "👾", "📋": "🪽", "📥": "🪽", "📌": "🪽",
+    "❓": "😳", "ℹ️": "😐", "📤": "🪽", "🔖": "🪽", "🧹": "💀",
+    "🎛": "👾", "⏰": "😐", "🌐": "🪽", "🛡": "💀", "☑": "🥰",
+    "🟠": "😳", "🟢": "🥰", "🔵": "🪽",
+}
+
 # Emojis not present in the premium database mapped to the closest available
 # equivalent that IS present in the database.
 _EMOJI_FALLBACK = {
@@ -127,13 +173,17 @@ def load_db():
 
 
 def is_available(emoji):
-    """Whether the given emoji has premium variants in the database."""
-    return _norm(emoji) in load_db()
+    """Whether the emoji has one of the bot's approved premium variants."""
+    key = _norm(emoji)
+    return key in USER_PREMIUM_EMOJI_IDS or key in load_db()
 
 
 def emoji_ids(emoji):
-    """Custom emoji document ids available for an emoji."""
-    entry = load_db().get(_norm(emoji)) or {}
+    """Custom emoji document ids. User-supplied IDs take priority."""
+    key = _norm(emoji)
+    if key in USER_PREMIUM_EMOJI_IDS:
+        return USER_PREMIUM_EMOJI_IDS[key]
+    entry = load_db().get(key) or {}
     ids = entry.get("ids") or []
     return [str(i) for i in ids if str(i).isdigit()]
 
@@ -145,10 +195,9 @@ def pick_id(emoji):
     """
     ids = emoji_ids(emoji)
     if not ids:
-        # Try fallback unicode equivalent that exists in the DB
-        fb = _EMOJI_FALLBACK.get(_norm(emoji)) or _EMOJI_FALLBACK.get(emoji)
-        if fb:
-            ids = emoji_ids(fb)
+        # Always fall back to one of the user-approved premium emojis.
+        fb = _PREMIUM_ONLY_FALLBACKS.get(_norm(emoji)) or "⭐"
+        ids = emoji_ids(fb)
     if not ids:
         return None
     return random.choice(ids)
@@ -198,10 +247,14 @@ def _split_run(run):
 def _normalize_run(run):
     norm = _norm(run)
     db = load_db()
+    if norm in USER_PREMIUM_EMOJI_IDS:
+        return norm
     if norm in db:
         return norm
+    if norm in _PREMIUM_ONLY_FALLBACKS:
+        return _PREMIUM_ONLY_FALLBACKS[norm]
     if norm in _EMOJI_FALLBACK:
-        return _EMOJI_FALLBACK[norm]
+        return "⭐"
     chunks = _split_run(run)
     if len(chunks) <= 1:
         return run
