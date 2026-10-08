@@ -26,6 +26,7 @@ from WahabX.utils.pastebin import Ayushbin
 from WahabX.utils.stream.queue import put_queue, put_queue_index
 from WahabX.utils.thumbnails import gen_qthumb, gen_thumb
 from WahabX.utils.notify import notify_owner
+from WahabX.utils.formatters import time_to_seconds
 
 _STREAM_LOG = "Stream"
 
@@ -80,7 +81,8 @@ async def stream(
                 continue
             if str(duration_min) == "None":
                 continue
-            if duration_sec > config.DURATION_LIMIT:
+            download_limit = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10) * 60
+            if duration_sec > download_limit:
                 continue
             if await is_active_chat(chat_id):
                 await put_queue(
@@ -204,6 +206,24 @@ async def stream(
         title = (result["title"]).title()
         duration_min = result["duration_min"]
         thumbnail = result["thumb"]
+
+        # Never download long-form episodes/movies. The song-download limit is
+        # separate from the maximum voice-call duration.
+        try:
+            duration_sec = int(time_to_seconds(str(duration_min))) if duration_min else 0
+        except Exception:
+            duration_sec = 0
+        download_limit = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10) * 60
+        if duration_sec > download_limit:
+            slog.info(
+                "[%s] rejecting long download: title=%s duration=%s limit=%sm",
+                _STREAM_LOG, title[:60], duration_min, download_limit // 60,
+            )
+            raise AssistantErr(
+                f"❌ Sirf {download_limit // 60} minute tak ke songs download honge. "
+                "Episodes/movies allowed nahi hain."
+            )
+
         status = True if video else None
         instant = False
         # Force download when proxy is configured (ffmpeg proxy issues cause no sound)
