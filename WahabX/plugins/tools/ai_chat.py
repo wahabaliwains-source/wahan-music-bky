@@ -35,9 +35,20 @@ ROMANTIC_RE = re.compile(
     re.I,
 )
 ROAST_RE = re.compile(
-    r"\b(chutiya|chutiye|madarchod|bhenchod|bc|mc|gandu|harami|kamina|bakwas|pagal|idiot|stupid|fuck|fucking|bitch)\b",
+    r"(?:\\b(chutiya|chutiye|chutiye|madarchod|madarchod|bhenchod|behenchod|bc|mc|gandu|gaand|harami|kamina|kamine|bakwas|pagal|idiot|stupid|fuck|fucking|bitch|asshole|son of a bitch|randi|lund|chut|bsdk|bhosd|bhosdike|teri maa|maa ki|behen ki)\\b)",
     re.I,
 )
+
+# The model is allowed to be creative, but a direct gaali should never turn
+# into a polite lecture because of a provider-side safety refusal.
+GAALI_COMEBACKS = [
+    "Abe chutiye, pehle tameez seekh phir mujhse baat kar 😏",
+    "Haan haan, gaali de li? Ab seedhi baat kar be 😂",
+    "Oye kamine, itni energy gaali mein nahi, baat mein laga 😏",
+    "Abe gandu, attitude apne paas rakh aur seedha bol 😭😂",
+    "Bas kar be harami, itna bhi over mat ho 😏",
+    "Oye bakchod, mood kharab mat kar, seedhi baat kar 😂",
+]
 
 
 def reaction_for_message(text: str):
@@ -85,6 +96,12 @@ async def _typing_loop(client, chat_id):
 
 
 async def ai_reply(text: str) -> str:
+    # Deterministic profanity fallback: if the user clearly abuses the bot,
+    # always answer with a short same-style desi comeback instead of relying
+    # entirely on an LLM that may refuse ordinary profanity.
+    if ROAST_RE.search(text):
+        return random.choice(GAALI_COMEBACKS)
+
     if not config.AI_ENABLED or not config.AI_API_KEY:
         return AI_BUSY_REPLY
 
