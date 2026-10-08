@@ -11,8 +11,8 @@ from pyrogram.types import Message
 import config
 from WahabX import app
 
-STICKER_FILE = os.path.join("tempdb", "com_e_girl_stickers.json")
-PACK_FILE = os.path.join("tempdb", "com_e_girl_sticker_packs.json")
+STICKER_FILE = os.path.join("tempdb", "himwari_stickers.json")
+PACK_FILE = os.path.join("tempdb", "himwari_sticker_packs.json")
 
 PACK_SHORT_NAME = "zngetu_by_Making_Stickers_Bot"
 PACK_LINK = "https://t.me/addstickers/zngetu_by_Making_Stickers_Bot"
@@ -183,7 +183,7 @@ async def send_random_sticker(message: Message, probability: float = 0.12):
         return False
 
 
-@app.on_message(filters.sticker & ~filters.service)
+@app.on_message(filters.sticker & filters.reply & ~filters.service)
 async def sticker_reply_handler(client, message: Message):
     """
     Whenever a user sends a sticker as a reply to another sticker, reply with
@@ -207,10 +207,10 @@ async def sticker_reply_handler(client, message: Message):
 
     try:
         await _show_sticker_choosing(client, message.chat.id)
-        await message.reply_sticker(chosen, quote=True)
-        print("[STICKER] Sticker-to-sticker random reply sent")
+        await client.send_sticker(chat_id=message.chat.id, sticker=chosen, reply_to_message_id=message.id)
+        print("[STICKER] REPLY_TRIGGERED -> random sticker sent")
     except Exception as e:
-        print(f"[STICKER] sticker reply failed: {type(e).__name__}: {e}")
+        print(f"[STICKER] REPLY_SEND_FAILED: {type(e).__name__}: {e}")
 
 
 @app.on_message(filters.command(["sticker", "savestickerpack"]))
