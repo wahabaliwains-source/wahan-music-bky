@@ -135,7 +135,11 @@ async def send_random_sticker(message: Message, probability: float = 0.12):
 
 @app.on_message(filters.sticker & ~filters.service)
 async def sticker_reply_handler(client, message: Message):
-    # Never react to bot stickers; this prevents an infinite sticker loop.
+    """
+    Reply with a random sticker from the fixed pack whenever a user replies
+    to ANY sticker. We intentionally do not require set_name/file_id matching
+    because Telegram/Pyrogram can omit or change those fields.
+    """
     if not message.from_user or message.from_user.is_bot:
         return
 
@@ -143,37 +147,23 @@ async def sticker_reply_handler(client, message: Message):
     if not replied or not replied.sticker:
         return
 
-    replied_pack = getattr(replied.sticker, "set_name", None)
-    replied_file_id = getattr(replied.sticker, "file_id", None)
-
-    # The configured pack is the main trigger. file_id is a fallback for
-    # stickers that arrive without set_name populated by Telegram/Pyrogram.
-    if replied_pack != PACK_SHORT_NAME:
-        saved = _load()
-        if not replied_file_id or replied_file_id not in saved:
-            return
-    else:
-        saved = _load()
-
+    saved = _load()
     if not saved:
+        print("[STICKER] Reply ignored: saved sticker pack is empty")
         return
 
-    # Prefer a different sticker when possible.
-    if len(saved) > 1 and replied_file_id in saved:
-        choices = [x for x in saved if x != replied_file_id]
-    else:
-        choices = saved
-
+    replied_file_id = getattr(replied.sticker, "file_id", None)
+    choices = [x for x in saved if x != replied_file_id] or saved
     chosen = random.choice(choices)
+
     try:
         await _show_sticker_choosing(client, message.chat.id)
-        await client.send_sticker(
-            chat_id=message.chat.id,
-            sticker=chosen,
-            reply_to_message_id=message.id,
-        )
+        await message.reply_sticker(chosen, quote=True)
+        print("[STICKER] Replied to sticker with saved pack sticker")
     except Exception as e:
         print(f"[STICKER] sticker reply failed: {type(e).__name__}: {e}")
+
+
 
 
 # Kept only as a harmless compatibility command. The pack itself is now
