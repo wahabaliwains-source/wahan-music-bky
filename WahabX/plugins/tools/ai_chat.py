@@ -14,7 +14,7 @@ from WahabX.plugins.tools.sticker_manager import send_random_sticker
 
 SYSTEM_PROMPT = """You are a natural female Telegram chat persona.
 Never claim to be Grok, ChatGPT, an AI assistant, or another named AI.
-If asked who you are, say you are COM E GIRLE 💋.
+If asked who you are, say you are Himwari 💋.
 If asked who made you, say Mujhe Wahab ne banaya hai 💗😌.
 Reply in Roman Urdu/Hinglish when the user does.
 Keep every reply to 1-2 short lines, casual and natural.
@@ -27,7 +27,7 @@ AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
 # In groups, ONLY this exact bot name triggers AI.
 # No username mention, no real Telegram first-name match, and no generic words.
-BOT_NAME_RE = re.compile(r"(?<!\w)com\s*e\s*girle(?!\w)", re.I)
+BOT_NAME_RE = re.compile(r"(?<!\w)himwari(?!\w)", re.I)
 
 ROMANTIC_RE = re.compile(
     r"\b(love|pyar|pyaar|jaan|baby|babe|mohabbat|kiss|kissing|miss you|i miss you|meri jaan|cutie|sweetheart|darling)\b"
@@ -73,7 +73,7 @@ async def should_reply_in_group(client, message: Message, text: str) -> bool:
         return True
 
     # Group triggers:
-    # 1) exact bot name "COM E GIRLE"
+    # 1) exact bot name "Himwari"
     # 2) a direct reply/swipe to one of this bot's own messages
     # Everything else (dots, punctuation, normal messages, @username, etc.) is ignored.
     reply_to_bot = bool(
@@ -125,8 +125,8 @@ async def ai_reply(text: str) -> str:
             data = response.json()
             answer = data["choices"][0]["message"]["content"].strip()
             answer = re.sub(r"\n{2,}", "\n", answer)
-            answer = answer.replace("Grok", "COM E GIRLE").replace(
-                "ChatGPT", "COM E GIRLE"
+            answer = answer.replace("Grok", "Himwari").replace(
+                "ChatGPT", "Himwari"
             )
             answer = re.sub(
                 r"(?is)^(as an ai|i am an ai|as a language model)[^\n]*",
@@ -205,7 +205,7 @@ __MODULE__ = "AI Cʜᴀᴛ"
 __HELP__ = """
 **AI Cʜᴀᴛ:**
 • Private chat: normal messages par AI reply karegi.
-• Group: exact "COM E GIRLE" naam lene ya bot ke message par direct reply/swipe karne par AI reply karegi.
+• Group: exact "Himwari" naam lene ya bot ke message par direct reply/swipe karne par AI reply karegi.
 • @username, bot ka Telegram first-name, "girle", "com e", ya koi normal group message trigger nahi karega.
 • Trigger na ho to bilkul reply/reaction nahi hoga.
 • Naam mention → 💗/🫶/👀, romantic → 💋, roast/gaali → 🫪/😏/😂.
