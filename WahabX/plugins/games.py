@@ -231,9 +231,18 @@ async def game_callbacks(client, query):
                 game["moves"][uid] = move
                 await query.answer(f"{RPS[move]} locked!")
                 if len(game["moves"]) < len(game["players"]):
+                    move_lines = []
+                    for player_id, player_name in game["players"].items():
+                        chosen_move = game["moves"].get(player_id)
+                        if chosen_move:
+                            move_lines.append(f"• **{player_name}** chose {RPS[chosen_move]} {chosen_move.title()}")
+                        else:
+                            move_lines.append(f"• **{player_name}** is choosing…")
                     await query.message.edit_text(
-                        "✊ **RPS Battle**\n\n" + _players_text(game["players"]) +
-                        f"\n\nMoves locked: {len(game['moves'])}/{len(game['players'])}"
+                        "✊ **RPS Battle**\n\n"
+                        + "\n".join(move_lines)
+                        + f"\n\nMoves received: {len(game['moves'])}/{len(game['players'])}\n"
+                        "Jab sab choose kar lenge, winner automatically show hoga."
                     )
                     return
                 counts = defaultdict(int)
@@ -245,7 +254,10 @@ async def game_callbacks(client, query):
                     winning = next(m for m in counts if all(m == x or x == RPS_WIN[m] for x in counts))
                     winners = [game["players"][p] for p, m in game["moves"].items() if m == winning]
                     result = "Winner: **" + ", ".join(winners) + "**"
-                moves_text = "\n".join(f"• {game['players'][p]} — {RPS[m]}" for p, m in game["moves"].items())
+                moves_text = "\n".join(
+                    f"• **{game['players'][p]}** chose {RPS[m]} {m.title()}"
+                    for p, m in game["moves"].items()
+                )
                 await query.message.edit_text(f"✊ **RPS Result**\n\n{moves_text}\n\n🏆 {result}")
                 GAMES.pop(chat_id, None)
                 return
