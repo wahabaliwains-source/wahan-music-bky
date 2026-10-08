@@ -449,7 +449,7 @@ async def _ai_quiz_question(game):
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 raw_answer = response.json()["choices"][0]["message"]["content"].strip()
-                raw_answer = re.sub(r"^\\`\\`\\`(?:json)?\\s*|\\s*\\`\\`\\`$", "", raw_answer, flags=re.I | re.S).strip()
+                raw_answer = re.sub(r"^\`\`\`(?:json)?\s*|\s*\`\`\`$", "", raw_answer, flags=re.I | re.S).strip()
                 item = json.loads(raw_answer)
                 q = str(item["question"]).strip()
                 options = [str(x).strip() for x in item["options"]]
