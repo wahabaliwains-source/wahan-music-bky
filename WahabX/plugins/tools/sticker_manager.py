@@ -183,7 +183,7 @@ async def send_random_sticker(message: Message, probability: float = 0.12):
         return False
 
 
-@app.on_message(filters.sticker & filters.reply & ~filters.service)
+@app.on_message(filters.sticker & ~filters.service)
 async def sticker_reply_handler(client, message: Message):
     """
     Whenever a user sends a sticker as a reply to another sticker, reply with
@@ -193,8 +193,15 @@ async def sticker_reply_handler(client, message: Message):
     if not message.from_user or message.from_user.is_bot:
         return
 
-    replied = message.reply_to_message
-    if not replied or not replied.sticker:
+    # Do not rely on filters.reply here: some PyroBlack builds do not set
+    # that filter consistently for Telegram's "reply/swipe" sticker UI.
+    replied = getattr(message, "reply_to_message", None)
+    if not replied:
+        print("[STICKER] STICKER_RECEIVED -> no reply_to_message")
+        return
+    replied_sticker = getattr(replied, "sticker", None)
+    if not replied_sticker:
+        print("[STICKER] STICKER_RECEIVED -> replied message is not a sticker")
         return
 
     saved = _load()
