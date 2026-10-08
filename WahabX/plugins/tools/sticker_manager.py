@@ -5,6 +5,7 @@ import random
 
 from pyrogram import filters
 from pyrogram.types import Message
+from pyrogram import raw
 
 import config
 from WahabX import app
@@ -146,9 +147,15 @@ async def sticker_manager(client, message: Message):
 
         if pack_name:
             try:
-                sticker_set = await client.get_sticker_set(pack_name)
-                pack_stickers = getattr(sticker_set, "stickers", None) or []
-                pack_id = getattr(sticker_set, "id", None)
+                # Telegram raw API reliably returns the complete sticker pack.
+                result = await client.invoke(
+                    raw.functions.messages.GetStickerSet(
+                        stickerset=raw.types.InputStickerSetShortName(short_name=pack_name),
+                        hash=0,
+                    )
+                )
+                pack_stickers = getattr(result, "documents", None) or []
+                pack_id = getattr(getattr(result, "set", None), "id", None)
 
                 for item in pack_stickers:
                     file_id = getattr(item, "file_id", None)
@@ -160,8 +167,8 @@ async def sticker_manager(client, message: Message):
                 pack_loaded = bool(pack_stickers)
             except Exception as e:
                 print(f"[STICKER] pack load failed: {type(e).__name__}: {e}")
-                # Some sticker sets cannot be expanded by the bot account.
-                # Keep the triggering sticker, but never pretend the whole pack was saved.
+                # Fall back to saving the triggering sticker only if Telegram
+                # refuses the full pack request.
 
         # Always save at least the sticker used with the command.
         file_id = getattr(sticker, "file_id", None)
@@ -194,7 +201,7 @@ __HELP__ = """
 **Sticker Pack Manager:**
 • Owner sticker ko reply karke /savestickerpack use kare.
 • Sticker bhej kar uske baad separate /savestickerpack bhi kaam karega.
-• Pack available ho to maximum 300 stickers save honge.
+• Telegram API se poora pack fetch karke maximum 300 stickers save honge.
 • Same command dobara process nahi hoga, isliye save/reply loop nahi banega.
 • COM E GIRLE saved pack se kabhi-kabhi random sticker bhejegi.
 • Sticker save commands OWNER ONLY hain.
