@@ -79,6 +79,30 @@ async def _find_sticker_target(client, message: Message):
     return None
 
 
+@app.on_message(filters.sticker & ~filters.service)
+async def sticker_reply_handler(client, message: Message):
+    # Never react to our own sticker messages; this prevents a sticker loop.
+    if not message.from_user or message.from_user.is_bot:
+        return
+
+    replied = message.reply_to_message
+    if not replied or not replied.sticker:
+        return
+
+    # Only stickers that were actually saved in our pack are triggers.
+    saved = _load()
+    replied_file_id = getattr(replied.sticker, "file_id", None)
+    if not replied_file_id or replied_file_id not in saved:
+        return
+
+    # Pick one saved sticker and reply to the user's sticker.
+    chosen = random.choice(saved)
+    try:
+        await message.reply_sticker(chosen, quote=True)
+    except Exception as e:
+        print(f"[STICKER] reply failed: {type(e).__name__}: {e}")
+
+
 @app.on_message(filters.command(["sticker", "savestickerpack"]))
 async def sticker_manager(client, message: Message):
     # OWNER ONLY. No sudo/admin user can save or modify the pack.
