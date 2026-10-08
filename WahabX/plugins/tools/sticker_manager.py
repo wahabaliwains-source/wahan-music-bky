@@ -12,6 +12,7 @@ import config
 from WahabX import app
 
 STICKER_FILE = os.path.join("tempdb", "com_e_girl_stickers.json")
+PACK_FILE = os.path.join("tempdb", "com_e_girl_sticker_packs.json")
 MAX_STICKERS = 300
 
 # Prevent two sticker-save commands from running at the same time.
@@ -38,6 +39,29 @@ def _save(items):
     clean = list(dict.fromkeys(x for x in items if isinstance(x, str) and x))
     with open(STICKER_FILE, "w", encoding="utf-8") as f:
         json.dump(clean[-MAX_STICKERS:], f, ensure_ascii=False)
+
+
+def _load_packs():
+    try:
+        os.makedirs(os.path.dirname(PACK_FILE), exist_ok=True)
+        if not os.path.exists(PACK_FILE):
+            return []
+        with open(PACK_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return list(dict.fromkeys(x for x in data if isinstance(x, str) and x))
+    except Exception:
+        return []
+
+
+def _save_pack_name(pack_name):
+    if not pack_name:
+        return
+    packs = _load_packs()
+    if pack_name not in packs:
+        packs.append(pack_name)
+    os.makedirs(os.path.dirname(PACK_FILE), exist_ok=True)
+    with open(PACK_FILE, "w", encoding="utf-8") as f:
+        json.dump(packs, f, ensure_ascii=False)
 
 
 def random_sticker():
@@ -105,21 +129,33 @@ async def sticker_reply_handler(client, message: Message):
     if not replied or not replied.sticker:
         return
 
-    # Only stickers that were actually saved in our pack are triggers.
+    # A saved pack is the trigger. Do not depend only on file_id:
+    # Telegram raw sticker documents do not reliably expose the same
+    # high-level file_id for every sticker in a pack.
     saved = _load()
     replied_file_id = getattr(replied.sticker, "file_id", None)
-    if not replied_file_id or replied_file_id not in saved:
+    replied_pack = getattr(replied.sticker, "set_name", None)
+    pack_match = bool(replied_pack and replied_pack in _load_packs())
+    sticker_match = bool(replied_file_id and replied_file_id in saved)
+    if not pack_match and not sticker_match:
         return
 
-    # Pick one saved sticker, visibly show "choosing a sticker", then
-    # send it as a real Telegram reply to the exact sticker message.
-    chosen = random.choice(saved)
+    # Pick another saved sticker and send it as a real reply to the user's
+    # sticker message.
+    if len(saved) > 1 and replied_file_id in saved:
+        choices = [x for x in saved if x != replied_file_id]
+    else:
+        choices = saved
+    chosen = random.choice(choices) if choices else None
+    if not chosen:
+        return
+
     try:
         await _show_sticker_choosing(client, message.chat.id)
-        await message.reply_sticker(
-            chosen,
+        await client.send_sticker(
+            chat_id=message.chat.id,
+            sticker=chosen,
             reply_to_message_id=message.id,
-            quote=True,
         )
     except Exception as e:
         print(f"[STICKER] reply failed: {type(e).__name__}: {e}")
@@ -167,6 +203,7 @@ async def sticker_manager(client, message: Message):
         pack_id = None
 
         if pack_name:
+            _save_pack_name(pack_name)
             try:
                 # Telegram raw API reliably returns the complete sticker pack.
                 result = await client.invoke(
