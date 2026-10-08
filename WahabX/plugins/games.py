@@ -136,19 +136,21 @@ def _mine_count(pos, mines):
     )
 
 
-def _mine_board(game, finished=False):
+def _mine_board(game, finished=False, exploded=None):
     rows = []
     for r in range(5):
         row = []
-        for c in range(5):
-            p = r * 5 + c
-            if p in game["opened"]:
-                label = "💥" if p in game["mines"] else str(_mine_count(p, game["mines"]) or "·")
+        for col in range(5):
+            p = r * 5 + col
+            if exploded is not None and p == exploded:
+                label, callback = "💥", "mg:mine:noop"
+            elif p in game["opened"]:
+                label, callback = str(_mine_count(p, game["mines"]) or "·"), f"mg:mine:open:{p}"
             elif finished and p in game["mines"]:
-                label = "💥"
+                label, callback = "💥", "mg:mine:noop"
             else:
-                label = "⬜"
-            row.append(_button(label, f"mg:mine:open:{p}", MINE_ICON))
+                label, callback = "⬜", f"mg:mine:open:{p}"
+            row.append(_button(label, callback, MINE_ICON))
         rows.append(row)
     return InlineKeyboardMarkup(rows)
 
@@ -385,6 +387,10 @@ async def game_callbacks(client, query):
                     await query.answer("Wrong 😭")
                 return
 
+        if data == "mg:mine:noop":
+            await query.answer("💥 Ye box already reveal ho chuka hai.", show_alert=True)
+            return
+
         if typ == "mine" and data.endswith(":open"):
             if uid not in game["players"]:
                 await query.answer("Pehle Join karo.", show_alert=True)
@@ -398,12 +404,19 @@ async def game_callbacks(client, query):
                 return
             game["opened"].add(pos)
             if pos in game["mines"]:
+                loser = game["players"].get(uid, _name(query.from_user))
+                winners = [name for pid, name in game["players"].items() if pid != uid]
+                winner_text = ", ".join(winners) if winners else "Nobody"
                 await query.message.edit_text(
-                    "💥 **BOOM! Game Over**\n\n" + _players_text(game["players"]) + "\n\nMine mil gayi 😭",
-                    reply_markup=_mine_board(game, finished=True),
+                    "💥 **BOOM!**\\n\\n"
+                    f"💀 **Loser:** {loser}\\n"
+                    f"🏆 **Winner:** {winner_text}\\n\\n"
+                    "Galat box choose ho gaya! 💣\\nGame Over.",
+                    reply_markup=_mine_board(game, finished=True, exploded=pos),
                 )
+                await query.answer("💥 BOOM! Tum mine par click kar gaye.", show_alert=True)
                 GAMES.pop(chat_id, None)
-                return
+                returnreturn
             safe_total = 25 - len(game["mines"])
             if len(game["opened"]) >= safe_total:
                 await query.message.edit_text(
