@@ -5,6 +5,7 @@ import random
 
 from pyrogram import filters
 from pyrogram.types import Message
+from pyrogram.enums import ChatAction
 from pyrogram import raw
 
 import config
@@ -44,6 +45,15 @@ def random_sticker():
     return random.choice(items) if items else None
 
 
+async def _show_sticker_choosing(client, chat_id):
+    try:
+        # Telegram shows "choosing a sticker" while the bot picks one.
+        await client.send_chat_action(chat_id, ChatAction.CHOOSE_STICKER)
+        await asyncio.sleep(0.7)
+    except Exception:
+        pass
+
+
 async def send_random_sticker(message: Message, probability: float = 0.12):
     if random.random() > probability:
         return False
@@ -51,7 +61,12 @@ async def send_random_sticker(message: Message, probability: float = 0.12):
     if not sticker:
         return False
     try:
-        await message.reply_sticker(sticker, quote=True)
+        await _show_sticker_choosing(message._client, message.chat.id)
+        await message.reply_sticker(
+            sticker,
+            reply_to_message_id=message.id,
+            quote=True,
+        )
         return True
     except Exception:
         return False
@@ -96,10 +111,16 @@ async def sticker_reply_handler(client, message: Message):
     if not replied_file_id or replied_file_id not in saved:
         return
 
-    # Pick one saved sticker and reply to the user's sticker.
+    # Pick one saved sticker, visibly show "choosing a sticker", then
+    # send it as a real Telegram reply to the exact sticker message.
     chosen = random.choice(saved)
     try:
-        await message.reply_sticker(chosen, quote=True)
+        await _show_sticker_choosing(client, message.chat.id)
+        await message.reply_sticker(
+            chosen,
+            reply_to_message_id=message.id,
+            quote=True,
+        )
     except Exception as e:
         print(f"[STICKER] reply failed: {type(e).__name__}: {e}")
 
