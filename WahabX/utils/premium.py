@@ -295,7 +295,7 @@ def premium_entities(text):
         for chunk in _split_run(run):
             length = _utf16_len(chunk)
             norm = _norm(chunk)
-            if norm in db:
+            if norm in USER_PREMIUM_EMOJI_IDS or norm in db:
                 custom_id = pick_id(norm)
                 if custom_id:
                     entities.append(
