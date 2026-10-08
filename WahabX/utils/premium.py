@@ -37,13 +37,13 @@ USER_PREMIUM_EMOJI_IDS = {
     "😩": ["5852775835752210255"],
     "🥹": ["6217455229613380412", "5789600796723124380"],
     "😻": ["6219504684927816093"],
-    "🥰": ["5852755374528011424"],
-    "🙂": ["6219882461661238968"],
+    "🥰": ["5852755374528011424", "5823347316840467528"],
+    "🙂": ["6219882461661238968", "5224290389405490318"],
     "🤩": ["5821095856329200514", "6199569233446179362", "6168201330641865495", "5226791576495216962", "5794222529425973097"],
     "🥳": ["5226577777318183910"],
     "⭐": ["5816864153901471073"],
     "🙏": ["6156438519024718107"],
-    "🥵": ["5273969661937988835"],
+    "🥵": ["5273969661937988835", "5425049199613859886"],
     "😛": ["6037208586210251252"],
     "🪽": ["5453982049234868434"],
     "🌙": ["5366217686781014856"],
@@ -191,7 +191,7 @@ def load_db():
 def is_available(emoji):
     """Whether the emoji has one of the bot's approved premium variants."""
     key = _norm(emoji)
-    return key in USER_PREMIUM_EMOJI_IDS or key in load_db()
+    return key in USER_PREMIUM_EMOJI_IDS
 
 
 def emoji_ids(emoji):
@@ -199,9 +199,7 @@ def emoji_ids(emoji):
     key = _norm(emoji)
     if key in USER_PREMIUM_EMOJI_IDS:
         return USER_PREMIUM_EMOJI_IDS[key]
-    entry = load_db().get(key) or {}
-    ids = entry.get("ids") or []
-    return [str(i) for i in ids if str(i).isdigit()]
+    return []
 
 
 def pick_id(emoji):
@@ -262,10 +260,7 @@ def _split_run(run):
 
 def _normalize_run(run):
     norm = _norm(run)
-    db = load_db()
     if norm in USER_PREMIUM_EMOJI_IDS:
-        return norm
-    if norm in db:
         return norm
     if norm in _PREMIUM_ONLY_FALLBACKS:
         return _PREMIUM_ONLY_FALLBACKS[norm]
@@ -305,13 +300,12 @@ def premium_entities(text):
     entities = []
     if not text:
         return entities
-    db = load_db()
     for start, end, run in _iter_emojis(text):
         pos = _utf16_len(text[:start])
         for chunk in _split_run(run):
             length = _utf16_len(chunk)
             norm = _norm(chunk)
-            if norm in USER_PREMIUM_EMOJI_IDS or norm in db:
+            if norm in USER_PREMIUM_EMOJI_IDS:
                 custom_id = pick_id(norm)
                 if custom_id:
                     entities.append(
