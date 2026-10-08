@@ -4,18 +4,20 @@ import os
 import random
 
 from pyrogram import filters
-from pyrogram.types import Message
 from pyrogram.enums import ChatAction
-from pyrogram import raw
+from pyrogram.types import Message
 
 import config
 from WahabX import app
 
 STICKER_FILE = os.path.join("tempdb", "com_e_girl_stickers.json")
 PACK_FILE = os.path.join("tempdb", "com_e_girl_sticker_packs.json")
+
+# This pack is fixed in code. No manual /savestickerpack command is needed.
+PACK_SHORT_NAME = "zngetu_by_Making_Stickers_Bot"
+PACK_LINK = "https://t.me/addstickers/zngetu_by_Making_Stickers_Bot"
 MAX_STICKERS = 300
 
-# Prevent two sticker-save commands from running at the same time.
 _SAVE_LOCK = asyncio.Lock()
 _PROCESSED_COMMANDS = set()
 
@@ -38,30 +40,23 @@ def _save(items):
     os.makedirs(os.path.dirname(STICKER_FILE), exist_ok=True)
     clean = list(dict.fromkeys(x for x in items if isinstance(x, str) and x))
     with open(STICKER_FILE, "w", encoding="utf-8") as f:
-        json.dump(clean[-MAX_STICKERS:], f, ensure_ascii=False)
+        json.dump(clean[:MAX_STICKERS], f, ensure_ascii=False)
 
 
-def _load_packs():
-    try:
-        os.makedirs(os.path.dirname(PACK_FILE), exist_ok=True)
-        if not os.path.exists(PACK_FILE):
-            return []
-        with open(PACK_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return list(dict.fromkeys(x for x in data if isinstance(x, str) and x))
-    except Exception:
-        return []
-
-
-def _save_pack_name(pack_name):
-    if not pack_name:
-        return
-    packs = _load_packs()
-    if pack_name not in packs:
-        packs.append(pack_name)
+def _save_pack_name(pack_name=PACK_SHORT_NAME):
     os.makedirs(os.path.dirname(PACK_FILE), exist_ok=True)
     with open(PACK_FILE, "w", encoding="utf-8") as f:
-        json.dump(packs, f, ensure_ascii=False)
+        json.dump([pack_name], f, ensure_ascii=False)
+
+
+def _clear_old_saved_stickers():
+    # Remove every old/manual sticker list before loading the new fixed pack.
+    for path in (STICKER_FILE, PACK_FILE):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            print(f"[STICKER] old data cleanup failed: {type(e).__name__}: {e}")
 
 
 def random_sticker():
@@ -71,19 +66,60 @@ def random_sticker():
 
 async def _show_sticker_choosing(client, chat_id):
     try:
-        # Telegram shows "choosing a sticker" while the bot picks one.
+        # Telegram displays "choosing a sticker" while the bot is selecting one.
         await client.send_chat_action(chat_id, ChatAction.CHOOSE_STICKER)
-        await asyncio.sleep(0.7)
+        await asyncio.sleep(0.8)
     except Exception:
         pass
+
+
+async def preload_fixed_sticker_pack(client):
+    """
+    Clear all old saved sticker data and automatically load the complete
+    configured public sticker pack from Telegram. This runs once at startup.
+    """
+    async with _SAVE_LOCK:
+        _clear_old_saved_stickers()
+
+        try:
+            sticker_set = await client.get_sticker_set(PACK_SHORT_NAME)
+            stickers = list(getattr(sticker_set, "stickers", None) or [])
+
+            file_ids = []
+            for sticker in stickers:
+                file_id = getattr(sticker, "file_id", None)
+                if file_id:
+                    file_ids.append(file_id)
+                if len(file_ids) >= MAX_STICKERS:
+                    break
+
+            if not file_ids:
+                raise RuntimeError("Telegram returned the pack but no usable file_ids")
+
+            _save(file_ids)
+            _save_pack_name(PACK_SHORT_NAME)
+            print(
+                f"[STICKER] Auto-loaded {len(file_ids)} stickers from "
+                f"{PACK_LINK}"
+            )
+            return len(file_ids)
+
+        except Exception as e:
+            print(
+                f"[STICKER] Auto-load failed for {PACK_LINK}: "
+                f"{type(e).__name__}: {e}"
+            )
+            return 0
 
 
 async def send_random_sticker(message: Message, probability: float = 0.12):
     if random.random() > probability:
         return False
+
     sticker = random_sticker()
     if not sticker:
         return False
+
     try:
         await _show_sticker_choosing(message._client, message.chat.id)
         await message.reply_sticker(
@@ -92,36 +128,14 @@ async def send_random_sticker(message: Message, probability: float = 0.12):
             quote=True,
         )
         return True
-    except Exception:
-        return False
-
-
-async def _find_sticker_target(client, message: Message):
-    # Best case: command is a direct reply to the sticker.
-    target = message.reply_to_message
-    if target and target.sticker:
-        return target
-
-    # Also support: sticker sent first, then /savestickerpack separately.
-    # Search recent history for the owner's latest sticker.
-    try:
-        async for item in client.get_chat_history(message.chat.id, limit=100):
-            if item.id >= message.id:
-                continue
-            if not item.sticker:
-                continue
-            if item.from_user and message.from_user:
-                if item.from_user.id == message.from_user.id:
-                    return item
     except Exception as e:
-        print(f"[STICKER] history lookup failed: {type(e).__name__}: {e}")
-
-    return None
+        print(f"[STICKER] random sticker failed: {type(e).__name__}: {e}")
+        return False
 
 
 @app.on_message(filters.sticker & ~filters.service)
 async def sticker_reply_handler(client, message: Message):
-    # Never react to our own sticker messages; this prevents a sticker loop.
+    # Never react to bot stickers; this prevents an infinite sticker loop.
     if not message.from_user or message.from_user.is_bot:
         return
 
@@ -129,27 +143,28 @@ async def sticker_reply_handler(client, message: Message):
     if not replied or not replied.sticker:
         return
 
-    # A saved pack is the trigger. Do not depend only on file_id:
-    # Telegram raw sticker documents do not reliably expose the same
-    # high-level file_id for every sticker in a pack.
-    saved = _load()
-    replied_file_id = getattr(replied.sticker, "file_id", None)
     replied_pack = getattr(replied.sticker, "set_name", None)
-    pack_match = bool(replied_pack and replied_pack in _load_packs())
-    sticker_match = bool(replied_file_id and replied_file_id in saved)
-    if not pack_match and not sticker_match:
+    replied_file_id = getattr(replied.sticker, "file_id", None)
+
+    # The configured pack is the main trigger. file_id is a fallback for
+    # stickers that arrive without set_name populated by Telegram/Pyrogram.
+    if replied_pack != PACK_SHORT_NAME:
+        saved = _load()
+        if not replied_file_id or replied_file_id not in saved:
+            return
+    else:
+        saved = _load()
+
+    if not saved:
         return
 
-    # Pick another saved sticker and send it as a real reply to the user's
-    # sticker message.
+    # Prefer a different sticker when possible.
     if len(saved) > 1 and replied_file_id in saved:
         choices = [x for x in saved if x != replied_file_id]
     else:
         choices = saved
-    chosen = random.choice(choices) if choices else None
-    if not chosen:
-        return
 
+    chosen = random.choice(choices)
     try:
         await _show_sticker_choosing(client, message.chat.id)
         await client.send_sticker(
@@ -158,109 +173,35 @@ async def sticker_reply_handler(client, message: Message):
             reply_to_message_id=message.id,
         )
     except Exception as e:
-        print(f"[STICKER] reply failed: {type(e).__name__}: {e}")
+        print(f"[STICKER] sticker reply failed: {type(e).__name__}: {e}")
 
 
+# Kept only as a harmless compatibility command. The pack itself is now
+# automatic and fixed, so users never need to manually save stickers.
 @app.on_message(filters.command(["sticker", "savestickerpack"]))
-async def sticker_manager(client, message: Message):
-    # OWNER ONLY. No sudo/admin user can save or modify the pack.
+async def sticker_manager_compat(client, message: Message):
     if not message.from_user or message.from_user.id not in config.OWNER_ID:
         return
 
-    # Never process the same Telegram command twice.
     command_key = (message.chat.id, message.id)
     if command_key in _PROCESSED_COMMANDS:
         return
     _PROCESSED_COMMANDS.add(command_key)
-    if len(_PROCESSED_COMMANDS) > 500:
-        _PROCESSED_COMMANDS.clear()
-        _PROCESSED_COMMANDS.add(command_key)
 
-    async with _SAVE_LOCK:
-        args = (message.text or "").split(maxsplit=1)
-        command_name = (message.command[0] if message.command else "").lower()
-        action = args[1].strip().lower() if len(args) > 1 else ""
-
-        if command_name == "sticker" and action not in ("save", "pack"):
-            await message.reply_text(
-                "Sticker ko reply karke /sticker save ya /savestickerpack karo 💗"
-            )
-            return
-
-        target = await _find_sticker_target(client, message)
-        if not target or not target.sticker:
-            await message.reply_text(
-                "Pehle sticker bhejo, phir /savestickerpack karo 💗\n"
-                "Ya sticker ko reply karke command bhejo."
-            )
-            return
-
-        sticker = target.sticker
-        items = _load()
-        before = len(items)
-        pack_name = getattr(sticker, "set_name", None)
-        pack_loaded = False
-        pack_id = None
-
-        if pack_name:
-            _save_pack_name(pack_name)
-            try:
-                # Telegram raw API reliably returns the complete sticker pack.
-                result = await client.invoke(
-                    raw.functions.messages.GetStickerSet(
-                        stickerset=raw.types.InputStickerSetShortName(short_name=pack_name),
-                        hash=0,
-                    )
-                )
-                pack_stickers = getattr(result, "documents", None) or []
-                pack_id = getattr(getattr(result, "set", None), "id", None)
-
-                for item in pack_stickers:
-                    file_id = getattr(item, "file_id", None)
-                    if file_id and file_id not in items:
-                        items.append(file_id)
-                    if len(items) >= MAX_STICKERS:
-                        break
-
-                pack_loaded = bool(pack_stickers)
-            except Exception as e:
-                print(f"[STICKER] pack load failed: {type(e).__name__}: {e}")
-                # Fall back to saving the triggering sticker only if Telegram
-                # refuses the full pack request.
-
-        # Always save at least the sticker used with the command.
-        file_id = getattr(sticker, "file_id", None)
-        if file_id and file_id not in items and len(items) < MAX_STICKERS:
-            items.append(file_id)
-
-        _save(items)
-        final_items = _load()
-        added = max(0, len(final_items) - before)
-
-        if pack_name and pack_loaded:
-            pack_text = f"Pack: {pack_name}"
-            if pack_id:
-                pack_text += f"\\nPack ID: {pack_id}"
-        elif pack_name:
-            pack_text = f"Pack: {pack_name} (sirf ye sticker save hua)"
-        else:
-            pack_text = "Single sticker (pack nahi mila)"
-
-        await message.reply_text(
-            f"Sticker save ho gaye 💗\n"
-            f"{pack_text}\n"
-            f"New: {added}\n"
-            f"Total: {len(final_items)}/{MAX_STICKERS}"
-        )
+    await message.reply_text(
+        "Sticker pack automatic hai 💗\n"
+        f"Pack: {PACK_LINK}\n"
+        "Bot startup par purane saved stickers delete karke poora pack khud load karta hai."
+    )
 
 
 __MODULE__ = "Sᴛɪᴄᴋᴇʀ Pᴀᴄᴋ Mᴀɴᴀɢᴇʀ"
 __HELP__ = """
 **Sticker Pack Manager:**
-• Owner sticker ko reply karke /savestickerpack use kare.
-• Sticker bhej kar uske baad separate /savestickerpack bhi kaam karega.
-• Telegram API se poora pack fetch karke maximum 300 stickers save honge.
-• Same command dobara process nahi hoga, isliye save/reply loop nahi banega.
-• COM E GIRLE saved pack se kabhi-kabhi random sticker bhejegi.
-• Sticker save commands OWNER ONLY hain.
+• Fixed pack automatically loads at startup.
+• Old/manual saved sticker data is deleted first.
+• Maximum 300 stickers are kept.
+• Replying to a sticker from the configured pack makes the bot reply with another saved sticker.
+• Telegram shows the "choosing a sticker" action before the sticker is sent.
+• Sticker saving commands are no longer required.
 """
