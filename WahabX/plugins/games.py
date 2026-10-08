@@ -48,15 +48,15 @@ def _name(user):
     return user.first_name or user.username or str(user.id)
 
 
-@app.on_message(filters.command("rps"))
+@app.on_message(filters.command(["rps", "rockpaperscissors"]))
 async def rps_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
-        GAMES[chat_id] = {"type": "rps", "players": {}, "moves": {}}
+        GAMES[chat_id] = {"type": "rps", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "moves": {}}
         kb = [
-            [_button("Join Game", "game:rps:join", RPS_ICON, ButtonStyle.SUCCESS)],
-            [_button("Start", "game:rps:start", RPS_ICON),
-             _button("Cancel", "game:rps:cancel", RPS_ICON, ButtonStyle.DANGER)],
+            [_button("Join Game", "mg:rps:join", RPS_ICON, ButtonStyle.SUCCESS)],
+            [_button("Start", "mg:rps:start", RPS_ICON),
+             _button("Cancel", "mg:rps:cancel", RPS_ICON, ButtonStyle.DANGER)],
         ]
         await message.reply_text(
             "✊ **Rock Paper Scissors**\n\n2–3 players join karein, phir Start dabayein.",
@@ -64,42 +64,42 @@ async def rps_start(client, message):
         )
 
 
-@app.on_message(filters.command("highcard"))
+@app.on_message(filters.command(["highcard", "cardbattle"]))
 async def highcard_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
-        GAMES[chat_id] = {"type": "highcard", "players": {}, "drawn": {}}
-        kb = [[_button("Join", "game:card:join", CARD_ICON, ButtonStyle.SUCCESS),
-               _button("Start", "game:card:start", CARD_ICON),
-               _button("Cancel", "game:card:cancel", CARD_ICON, ButtonStyle.DANGER)]]
+        GAMES[chat_id] = {"type": "highcard", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "drawn": {}}
+        kb = [[_button("Join", "mg:card:join", CARD_ICON, ButtonStyle.SUCCESS),
+               _button("Start", "mg:card:start", CARD_ICON),
+               _button("Cancel", "mg:card:cancel", CARD_ICON, ButtonStyle.DANGER)]]
         await message.reply_text(
             "🃏 **High Card Battle**\n\n2–3 players join karein. Start par sab ko random card milega; highest card wins!",
             reply_markup=InlineKeyboardMarkup(kb),
         )
 
 
-@app.on_message(filters.command("dicebattle"))
+@app.on_message(filters.command(["dicebattle", "dice"]))
 async def dice_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
-        GAMES[chat_id] = {"type": "dice", "players": {}, "rolls": {}}
-        kb = [[_button("Join", "game:dice:join", DICE_ICON, ButtonStyle.SUCCESS),
-               _button("Roll / Start", "game:dice:start", DICE_ICON),
-               _button("Cancel", "game:dice:cancel", DICE_ICON, ButtonStyle.DANGER)]]
+        GAMES[chat_id] = {"type": "dice", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "rolls": {}}
+        kb = [[_button("Join", "mg:dice:join", DICE_ICON, ButtonStyle.SUCCESS),
+               _button("Roll / Start", "mg:dice:start", DICE_ICON),
+               _button("Cancel", "mg:dice:cancel", DICE_ICON, ButtonStyle.DANGER)]]
         await message.reply_text(
             "🎲 **Dice Battle**\n\n2–3 players join karein. Har player Roll dabaye; highest roll wins!",
             reply_markup=InlineKeyboardMarkup(kb),
         )
 
 
-@app.on_message(filters.command("quizbattle"))
+@app.on_message(filters.command(["quizbattle", "quiz"]))
 async def quiz_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
-        GAMES[chat_id] = {"type": "quiz", "players": {}, "scores": {}, "question": None, "answered": set(), "round": 0}
-        kb = [[_button("Join", "game:quiz:join", QUIZ_ICON, ButtonStyle.SUCCESS),
-               _button("Start Quiz", "game:quiz:start", QUIZ_ICON),
-               _button("Cancel", "game:quiz:cancel", QUIZ_ICON, ButtonStyle.DANGER)]]
+        GAMES[chat_id] = {"type": "quiz", "host": message.from_user.id, "players": {message.from_user.id: _name(message.from_user)}, "scores": {}, "question": None, "answered": set(), "round": 0}
+        kb = [[_button("Join", "mg:quiz:join", QUIZ_ICON, ButtonStyle.SUCCESS),
+               _button("Start Quiz", "mg:quiz:start", QUIZ_ICON),
+               _button("Cancel", "mg:quiz:cancel", QUIZ_ICON, ButtonStyle.DANGER)]]
         await message.reply_text(
             "🧠 **Quiz Battle**\n\n2–3 players join karein. 5 rounds; fastest correct answer gets 1 point!",
             reply_markup=InlineKeyboardMarkup(kb),
@@ -107,7 +107,7 @@ async def quiz_start(client, message):
 
 
 def _new_mines():
-    return {"type": "mines", "mines": set(random.sample(range(25), 5)), "opened": set(), "players": {}}
+    return {"type": "mines", "host": None, "mines": set(random.sample(range(25), 5)), "opened": set(), "players": {}}
 
 
 def _mine_count(pos, mines):
@@ -130,28 +130,29 @@ def _mine_board(game, finished=False):
                 label = "💥"
             else:
                 label = "⬜"
-            row.append(_button(label, f"game:mine:open:{p}", MINE_ICON))
+            row.append(_button(label, f"mg:mine:open:{p}", MINE_ICON))
         rows.append(row)
     return InlineKeyboardMarkup(rows)
 
 
-@app.on_message(filters.command("mines"))
+@app.on_message(filters.command(["mines", "minesweeper"]))
 async def mines_start(client, message):
     chat_id = message.chat.id
     async with LOCKS[chat_id]:
         game = _new_mines()
         GAMES[chat_id] = game
+        game["host"] = message.from_user.id
         game["players"][message.from_user.id] = _name(message.from_user)
         await message.reply_text(
-            "💣 **Minesweeper 5×5**\n\n2–3 players total. Join karo aur safe boxes open karo. Mine mili to game over!",
+            "💣 **Minesweeper 5×5**\n\nHost already joined. Baaki players **Join** dabayein.\nBoard turant active hai; safe cells choose karo.\n5 hidden mines hain — mine mili to BOOM!",
             reply_markup=InlineKeyboardMarkup([[
-                _button("Join", "game:mine:join", MINE_ICON, ButtonStyle.SUCCESS),
-                _button("Cancel", "game:mine:cancel", MINE_ICON, ButtonStyle.DANGER),
+                _button("Join", "mg:mine:join", MINE_ICON, ButtonStyle.SUCCESS),
+                _button("Cancel", "mg:mine:cancel", MINE_ICON, ButtonStyle.DANGER),
             ]]),
         )
 
 
-@app.on_callback_query(filters.regex(r"^game:"))
+@app.on_callback_query(filters.regex(r"^mg:"))
 async def game_callbacks(client, query):
     data = query.data
     chat_id = query.message.chat.id
@@ -162,13 +163,17 @@ async def game_callbacks(client, query):
 
     uid = query.from_user.id
     name = _name(query.from_user)
+    is_host = uid == game.get("host")
 
     async with LOCKS[chat_id]:
         typ = data.split(":")[1]
 
         if data.endswith(":cancel"):
+            if not is_host:
+                await query.answer("Sirf host game cancel kar sakta hai.", show_alert=True)
+                return
             GAMES.pop(chat_id, None)
-            await query.message.edit_text("❌ Game cancelled.")
+            await query.message.edit_text("❌ Game cancelled by host.")
             await query.answer()
             return
 
@@ -190,9 +195,9 @@ async def game_callbacks(client, query):
                 await query.message.edit_text(
                     f"🎮 **{typ.upper()}**\n\nPlayers:\n{_players_text(players)}\n\n2–3 players allowed.",
                     reply_markup=InlineKeyboardMarkup([[
-                        _button("Join", f"game:{typ}:join", icon, ButtonStyle.SUCCESS),
-                        _button(start_label, f"game:{typ}:start", icon),
-                        _button("Cancel", f"game:{typ}:cancel", icon, ButtonStyle.DANGER),
+                        _button("Join", f"mg:{typ}:join", icon, ButtonStyle.SUCCESS),
+                        _button(start_label, f"mg:{typ}:start", icon),
+                        _button("Cancel", f"mg:{typ}:cancel", icon, ButtonStyle.DANGER),
                     ]]),
                 )
             await query.answer(f"{name} joined!")
@@ -202,14 +207,18 @@ async def game_callbacks(client, query):
             await query.answer("Kam az kam 2 players chahiye.", show_alert=True)
             return
 
+        if data.endswith(":start") and not is_host:
+            await query.answer("Sirf host game start kar sakta hai.", show_alert=True)
+            return
+
         if typ == "rps":
             if data.endswith(":start"):
                 await query.message.edit_text(
                     "✊ **RPS Battle**\n\n" + _players_text(game["players"]) + "\n\nApni move choose karo.",
                     reply_markup=InlineKeyboardMarkup([[
-                        _button("Rock", "game:rps:rock", RPS_ICON),
-                        _button("Paper", "game:rps:paper", RPS_ICON),
-                        _button("Scissors", "game:rps:scissors", RPS_ICON),
+                        _button("Rock", "mg:rps:rock", RPS_ICON),
+                        _button("Paper", "mg:rps:paper", RPS_ICON),
+                        _button("Scissors", "mg:rps:scissors", RPS_ICON),
                     ]]),
                 )
                 await query.answer()
@@ -288,7 +297,7 @@ async def game_callbacks(client, query):
                 await _quiz_question(query, game)
                 await query.answer()
                 return
-            if data.startswith("game:quiz:ans:"):
+            if data.startswith("mg:quiz:ans:"):
                 if uid not in game["players"]:
                     await query.answer("Pehle Join karo.", show_alert=True)
                     return
@@ -352,7 +361,7 @@ async def _quiz_question(query, game):
     q, options, answer = random.choice(QUIZ_BANK)
     game["question"] = (q, options, answer)
     game["answered"] = set()
-    rows = [[_button(f"{chr(65+i)}. {option}", f"game:quiz:ans:{i}", QUIZ_ICON)] for i, option in enumerate(options)]
+    rows = [[_button(f"{chr(65+i)}. {option}", f"mg:quiz:ans:{i}", QUIZ_ICON)] for i, option in enumerate(options)]
     await query.message.edit_text(
         f"🧠 **Round {game['round']}/5**\n\n{q}",
         reply_markup=InlineKeyboardMarkup(rows),
@@ -362,12 +371,48 @@ async def _quiz_question(query, game):
 @app.on_message(filters.command("games"))
 async def games_help(client, message):
     await message.reply_text(
-        "🎮 **Games**\n\n"
-        "/rps — Rock Paper Scissors (2–3)\n"
-        "/highcard — High Card Battle (2–3)\n"
-        "/dicebattle — Dice Battle (2–3)\n"
-        "/quizbattle — Quiz Battle (2–3)\n"
-        "/mines — Minesweeper 5×5 (2–3)"
+        "🎮 **HIMWARI GAME ZONE**\n\n"
+        "✊ /rps — Rock Paper Scissors\n"
+        "🃏 /highcard — High Card Battle\n"
+        "🎲 /dicebattle — Dice Battle\n"
+        "🧠 /quizbattle — Quiz Battle\n"
+        "💣 /mines — Minesweeper 5×5\n\n"
+        "📜 Complete rules: /gamerules\n"
+        "Har game buttons se play hoti hai."
+    )
+
+
+@app.on_message(filters.command(["gamerules", "gamerule"]))
+async def games_rules(client, message):
+    await message.reply_text(
+        "📜 **GAME RULES**\n\n"
+        "🎮 **Common**\n"
+        "• Minimum 2, maximum 3 players.\n"
+        "• Command bhejne wala host automatically player 1 hai.\n"
+        "• Baaki players **Join** button se enter honge.\n"
+        "• Sirf host **Start/Cancel** kar sakta hai.\n"
+        "• Ek user ek hi baar join kar sakta hai.\n\n"
+        "✊ **RPS**\n"
+        "• Rock > Scissors > Paper > Rock.\n"
+        "• Sab players apni move choose karte hain.\n"
+        "• Same/all-three moves = Draw.\n\n"
+        "🃏 **High Card**\n"
+        "• Har player ko random 2–A card milta hai.\n"
+        "• Highest value winner; same highest value = tie.\n\n"
+        "🎲 **Dice Battle**\n"
+        "• Har player sirf ek baar Roll karta hai.\n"
+        "• 1–6 mein highest roll winner.\n\n"
+        "🧠 **Quiz Battle**\n"
+        "• Total 5 rounds.\n"
+        "• Pehla correct answer +1 point.\n"
+        "• Highest score winner.\n\n"
+        "💣 **Minesweeper**\n"
+        "• 5×5 board mein 5 hidden mines.\n"
+        "• 2–3 players shared board par safe cells open karte hain.\n"
+        "• Mine select hui = 💥 BOOM + game over.\n"
+        "• Saari 20 safe cells open = WIN.\n"
+        "• BOOM button tumhara custom emoji ID use karta hai.\n\n"
+        "⚠️ Active games memory mein hain; bot restart/redeploy par reset ho jayengi."
     )
 
 
