@@ -1,5 +1,6 @@
 import asyncio
 import random
+import re
 from collections import defaultdict
 
 from pyrogram import filters
@@ -46,6 +47,13 @@ def _players_text(players):
 
 def _name(user):
     return user.first_name or user.username or str(user.id)
+
+
+def _quiz_score_text(game):
+    return " | ".join(
+        f"{name}: {game['scores'].get(uid, 0)}"
+        for uid, name in game["players"].items()
+    )
 
 
 @app.on_message(filters.command(["rps", "rockpaperscissors"]))
@@ -316,7 +324,19 @@ async def game_callbacks(client, query):
                 if uid in game["answered"]:
                     await query.answer("Is round mein tum already answer kar chuke ho.", show_alert=True)
                     return
-                choice = int(data.rsplit(":", 1)[-1])
+                parts = data.split(":")
+                if len(parts) != 5:
+                    await query.answer("Invalid quiz button.", show_alert=True)
+                    return
+                try:
+                    round_id = int(parts[3])
+                    choice = int(parts[4])
+                except ValueError:
+                    await query.answer("Invalid quiz answer.", show_alert=True)
+                    return
+                if round_id != game["round"]:
+                    await query.answer("Ye purana question hai. Naya question dekho.", show_alert=True)
+                    return
                 game["answered"].add(uid)
                 correct = game["question"][2]
                 if choice == correct:
@@ -373,7 +393,7 @@ async def _quiz_question(query, game):
     q, options, answer = random.choice(QUIZ_BANK)
     game["question"] = (q, options, answer)
     game["answered"] = set()
-    rows = [[_button(f"{chr(65+i)}. {option}", f"mg:quiz:ans:{i}", QUIZ_ICON)] for i, option in enumerate(options)]
+    rows = [[_button(f"{chr(65+i)}. {option}", f"mg:quiz:ans:{game['round']}:{i}", QUIZ_ICON)] for i, option in enumerate(options)]
     await query.message.edit_text(
         f"🧠 **Round {game['round']}/5**\n\n{q}",
         reply_markup=InlineKeyboardMarkup(rows),
