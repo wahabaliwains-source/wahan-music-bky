@@ -47,7 +47,7 @@ async def admins_command(client, message: Message):
         user = member.user
         if getattr(user, "is_bot", False):
             continue
-        icon = "👑" if member.status == ChatMemberStatus.OWNER else "💪"
+        icon = "🥰" if member.status == ChatMemberStatus.OWNER else "💪"
         admins.append(f"{icon} {_label(user)}")
     if not admins:
         text = "😢 Is group mein admins nahi mile."
@@ -101,7 +101,7 @@ async def demote_command(client, message: Message):
         await message.reply_text(text, entities=premium_entities(text))
         return
     try:
-        await client.promote_chat_member(message.chat.id, target.id, is_admin=False)
+        await client.promote_chat_member(message.chat.id, target.id, can_change_info=False, can_post_messages=False, can_edit_messages=False, can_delete_messages=False, can_invite_users=False, can_restrict_members=False, can_pin_messages=False, can_manage_video_chats=False, can_promote_members=False, is_anonymous=False)
         text = f"😜 **Demoted:** {_label(target)}"
         await message.reply_text(text, entities=premium_entities(text))
     except Exception as e:
@@ -136,7 +136,7 @@ async def tagall_command(client, message: Message):
     chunks = []
     current = custom + "\n\n"
     for user in members:
-        mention = user.mention
+        mention = user.mention(style="md")
         piece = mention + " "
         if len(current) + len(piece) > 3500:
             chunks.append(current.rstrip())
@@ -149,7 +149,7 @@ async def tagall_command(client, message: Message):
     for i, chunk in enumerate(chunks):
         text = f"💋 **Tag All**\n{chunk}"
         try:
-            await message.reply_text(text, entities=premium_entities(text), disable_web_page_preview=True)
+            await message.reply_text(text, parse_mode="markdown", disable_web_page_preview=True)
         except Exception as e:
             print(f"[GROUP] tagall failed: {type(e).__name__}: {e}")
         if i + 1 < len(chunks):
