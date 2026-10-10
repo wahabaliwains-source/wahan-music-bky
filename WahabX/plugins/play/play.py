@@ -19,7 +19,6 @@ from WahabX.core.call import Ayush
 from WahabX.misc import db
 from WahabX.utils import seconds_to_min, time_to_seconds
 from WahabX.utils.database import is_video_allowed
-from WahabX.utils.database import is_active_chat
 from WahabX.utils.decorators.play import PlayWrapper
 from WahabX.utils.formatters import formats
 from WahabX.utils.inline.play import (
@@ -763,10 +762,14 @@ async def dedicated_video_play_command(
             text = f"❌ {limit_minutes} minutes se lambi video download nahi hogi. Duration: {duration}"
             return await status.edit_text(text, entities=premium_entities(text))
 
-        # Remove the previous queue/file and stop its VC stream before starting
-        # the new download. video_dl() also removes stale media and partial files.
-        if await is_active_chat(chat_id):
+        # Always clear any previous audio/video queue and leave its stream before
+        # starting a replacement. video_dl() also removes stale media/temp files.
+        try:
             await Ayush.stop_stream(chat_id)
+        except Exception as stop_error:
+            LOGGER(_PLAY_LOG).warning(
+                "[VSTREAM] previous stream cleanup had an issue: %s", stop_error
+            )
 
         downloading_text = (
             f"🥹 Video + audio download ho rahi hai...\n"
