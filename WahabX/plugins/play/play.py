@@ -176,6 +176,16 @@ async def play_commnd(
             return await mystic.delete()
         return
     elif url:
+        # Video commands must not silently fall back to audio-only sources.
+        if video:
+            video_source = (
+                await Platform.youtube.exists(url)
+                or await Platform.spotify.valid(url)
+                or await Platform.apple.valid(url)
+                or await Platform.resso.valid(url)
+            )
+            if not video_source:
+                return await mystic.edit_text("❌ Video stream ke liye YouTube link/title (ya supported Spotify/Apple/Resso link) use karo.")
         if await Platform.youtube.exists(url):
             if "playlist" in url:
                 try:
@@ -207,7 +217,9 @@ async def play_commnd(
                         details["duration_min"],
                     )
                 except Exception as yt_error:
-                    LOGGER(_PLAY_LOG).warning("[PLAY] YouTube URL details failed; trying SoundCloud: %s", yt_error)
+                    LOGGER(_PLAY_LOG).warning("[PLAY] YouTube URL details failed: %s", yt_error)
+                    if video:
+                        return await mystic.edit_text("❌ Video ke liye YouTube details nahi milin. Doosra YouTube link ya video title try karo.")
                     sc = await Platform.soundcloud.search(f"https://www.youtube.com/watch?v={videoid}")
                     if not sc or not sc.get("url"):
                         return await mystic.edit_text("❌ Song nahi mila 💗")
@@ -233,7 +245,9 @@ async def play_commnd(
                         details["duration_min"],
                     )
                 except Exception as yt_error:
-                    LOGGER(_PLAY_LOG).warning("[PLAY] YouTube URL track failed; trying SoundCloud: %s", yt_error)
+                    LOGGER(_PLAY_LOG).warning("[PLAY] YouTube URL track failed: %s", yt_error)
+                    if video:
+                        return await mystic.edit_text("❌ Video ke liye YouTube details nahi milin. Doosra YouTube link ya video title try karo.")
                     sc = await Platform.soundcloud.search(url)
                     if not sc or not sc.get("url"):
                         return await mystic.edit_text("❌ Song nahi mila 💗")
@@ -464,10 +478,20 @@ async def play_commnd(
             streamtype = "youtube"
         except Exception as e:
             LOGGER(_PLAY_LOG).warning(
-                "[PLAY] YouTube search failed after %.1fs; trying Spotify metadata then SoundCloud: %s",
+                "[PLAY] YouTube search failed after %.1fs: %s",
                 _time.monotonic() - track_t0,
                 e,
             )
+            if video:
+                try:
+                    await notify_owner(
+                        "VPlay YouTube search",
+                        e,
+                        f"query={query[:80]} user={user_id} chat={message.chat.id}",
+                    )
+                except Exception:
+                    pass
+                return await mystic.edit_text("❌ Is title ka YouTube video nahi mila. YouTube ka exact title ya link try karo.")
 
             spotify_result = False
             try:
@@ -670,3 +694,17 @@ async def play_commnd(
                     streamtype=f"URL Searched Inline",
                     thumbnail=img,
                 )
+
+
+# Dedicated video playback command group. Normal /play only handles audio;
+# /vplay and /vstream route through the same playback pipeline with video=True.
+@app.on_message(
+    filters.group
+    & filters.command(
+        ["vplay", "vplayforce", "vstream", "videoplay"],
+        prefixes=["/", "!", "%", ",", "@", "#"],
+    )
+    & ~BANNED_USERS
+)
+async def dedicated_video_play_command(client, message: Message):
+    return await play_commnd(client, message)
