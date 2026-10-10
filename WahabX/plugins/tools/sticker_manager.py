@@ -14,8 +14,8 @@ from WahabX import app
 STICKER_FILE = os.path.join("tempdb", "himwari_stickers.json")
 PACK_FILE = os.path.join("tempdb", "himwari_sticker_packs.json")
 
-PACK_SHORT_NAME = "zngetu_by_Making_Stickers_Bot"
-PACK_LINK = "https://t.me/addstickers/zngetu_by_Making_Stickers_Bot"
+PACK_SHORT_NAME = "kawaiikipfel_by_moe_sticker_bot"
+PACK_LINK = "https://t.me/addstickers/kawaiikipfel_by_moe_sticker_bot"
 
 # Sticker file_ids are tiny strings, so keep the whole public pack.
 MAX_STICKERS = 5000
