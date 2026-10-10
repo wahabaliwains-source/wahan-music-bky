@@ -62,9 +62,12 @@ async def _require_bot_restrict_rights(message: Message) -> bool:
     member = await _bot_member(message)
     if member and member.status == ChatMemberStatus.OWNER:
         return True
-    if member and member.status == ChatMemberStatus.ADMINISTRATOR and bool(
+    privileges = getattr(member, "privileges", None) if member else None
+    can_restrict = bool(
         getattr(member, "can_restrict_members", False)
-    ):
+        or getattr(privileges, "can_restrict_members", False)
+    )
+    if member and member.status == ChatMemberStatus.ADMINISTRATOR and can_restrict:
         return True
     await message.reply_text(
         "❌ Is command ke liye bot ko **Restrict Members** permission chahiye."
