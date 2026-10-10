@@ -2,7 +2,7 @@
 # All rights reserved.
 #
 
-from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.enums import ChatMemberStatus, ChatType, ChatMembersFilter
 from pyrogram.types import InlineKeyboardMarkup
 
 from config import adminlist
@@ -19,8 +19,46 @@ from WahabX.utils.database import (
     is_nonadmin_chat,
 )
 
-from ..formatters import int_to_alpha
+from ..formatters import int_to_alpha, alpha_to_int
 from WahabX.utils.premium import warn_btn
+
+
+async def refresh_admin_cache(client, chat_id: int):
+    """Rebuild the per-chat player admin cache from Telegram and authorized users."""
+    fresh = []
+    async for member in client.get_chat_members(
+        chat_id, filter=ChatMembersFilter.ADMINISTRATORS
+    ):
+        user = getattr(member, "user", None)
+        status = getattr(member, "status", None)
+        if user and status in (
+            ChatMemberStatus.OWNER,
+            ChatMemberStatus.ADMINISTRATOR,
+        ):
+            fresh.append(user.id)
+
+    try:
+        authusers = await get_authuser_names(chat_id) or []
+    except Exception as e:
+        authusers = []
+        print(f"[ADMIN_CACHE] authorized-user lookup failed for {chat_id}: {type(e).__name__}: {e}")
+
+    for value in authusers:
+        try:
+            if isinstance(value, int):
+                user_id = value
+            else:
+                raw = str(value).strip()
+                user_id = int(raw) if raw.isdigit() else await alpha_to_int(raw)
+            if user_id:
+                fresh.append(int(user_id))
+        except Exception as e:
+            print(f"[ADMIN_CACHE] skipped malformed authorized user for {chat_id}: {type(e).__name__}")
+
+    fresh = list(dict.fromkeys(fresh))
+    # Apply the new cache only after the Telegram admin scan succeeds.
+    adminlist[chat_id] = fresh
+    return fresh
 
 
 def AdminRightsCheck(mystic):
@@ -65,10 +103,16 @@ def AdminRightsCheck(mystic):
         is_non_admin = await is_nonadmin_chat(message.chat.id)
         if not is_non_admin:
             if message.from_user.id not in SUDOERS:
-                admins = adminlist.get(message.chat.id)
-                if not admins:
-                    return await message.reply_text(_["admin_18"])
-                else:
+                admins = adminlist.get(message.chat.id) or []
+                if message.from_user.id not in admins:
+                    try:
+                        admins = await refresh_admin_cache(client, message.chat.id)
+                    except Exception as e:
+                        print(f"[ADMIN_CACHE] refresh failed for {message.chat.id}: {type(e).__name__}: {e}")
+                    if not admins:
+                        return await message.reply_text(
+                            "❌ Admin cache empty hai. Bot ko group mein admin banao, phir /admincache chalao."
+                        )
                     if message.from_user.id not in admins:
                         return await message.reply_text(_["admin_19"])
         return await mystic(client, message, _, chat_id)
