@@ -16,7 +16,7 @@ STATS_COMMAND : ["stats"]
 LANGUAGE_COMMAND : ["lang", "language", "langs", "dil", "diller"]
 
 # Oynatma Komutları
-PLAY_COMMAND : ["play", "vplay", "cplay", "cvplay", "playforce", "vplayforce", "cplayforce", "cvplayforce", "oynat", "voynat", "coynat"]
+PLAY_COMMAND : ["play", "cplay", "cvplay", "playforce", "cplayforce", "cvplayforce", "oynat", "voynat", "coynat"]
 PLAYMODE_COMMAND : ["playmode", "oynatmamodu"]
 CHANNELPLAY_COMMAND : ["channelplay"]
 STREAM_COMMAND : ["stream", "cstream", "streamforce", "cstreamforce"]
