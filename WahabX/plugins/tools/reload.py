@@ -1,36 +1,28 @@
-
 # All rights reserved.
-#
-
 
 from pyrogram import filters
-from pyrogram.enums import ChatMembersFilter
 from pyrogram.types import Message
 
-from config import BANNED_USERS, adminlist
+from config import BANNED_USERS
 from strings import command
 from WahabX import app
-from WahabX.utils.database import get_authuser_names
 from WahabX.utils.decorators import language
-from WahabX.utils.formatters import alpha_to_int
+from WahabX.utils.decorators.admins import refresh_admin_cache
 
 
 @app.on_message(command("RELOAD_COMMAND") & filters.group & ~BANNED_USERS)
 @language
-async def reload_admin_cache(client, message: Message, _):
+async def reload_admin_cache_command(client, message: Message, _):
     try:
         chat_id = message.chat.id
-        admins = app.get_chat_members(chat_id, filter=ChatMembersFilter.ADMINISTRATORS)
-        authusers = await get_authuser_names(chat_id)
-        adminlist[chat_id] = []
-        async for user in admins:
-            if user.privileges.can_manage_video_chats:
-                adminlist[chat_id].append(user.user.id)
-        for user in authusers:
-            user_id = await alpha_to_int(user)
-            adminlist[chat_id].append(user_id)
-        await message.reply_text(_["admin_20"])
-    except Exception:
+        admins = await refresh_admin_cache(client, chat_id)
         await message.reply_text(
-            "Failed to reload admincache make sure bot is an admin in your chat"
+            f"✅ **Admin cache refresh ho gaya!**\n"
+            f"👑 Admin/authorized users cached: {len(admins)}"
+        )
+    except Exception as e:
+        print(f"[ADMIN_CACHE] reload failed for {message.chat.id}: {type(e).__name__}: {e}")
+        await message.reply_text(
+            "❌ Admin cache refresh nahi ho saka. Confirm karo bot group mein admin hai "
+            "aur phir /admincache dobara try karo."
         )
