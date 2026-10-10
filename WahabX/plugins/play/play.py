@@ -3,6 +3,7 @@
 #
 
 import random
+import os
 import string
 import time as _time
 
@@ -14,8 +15,11 @@ import config
 from config import BANNED_USERS, lyrical
 from strings import command
 from WahabX import app, LOGGER, Platform
+from WahabX.core.call import Ayush
+from WahabX.misc import db
 from WahabX.utils import seconds_to_min, time_to_seconds
 from WahabX.utils.database import is_video_allowed
+from WahabX.utils.database import is_active_chat
 from WahabX.utils.decorators.play import PlayWrapper
 from WahabX.utils.formatters import formats
 from WahabX.utils.inline.play import (
@@ -27,7 +31,9 @@ from WahabX.utils.inline.play import (
 from WahabX.utils.inline.playlist import botplaylist_markup
 from WahabX.utils.logger import play_logs
 from WahabX.utils.stream.stream import stream
+from WahabX.utils.stream.queue import put_queue
 from WahabX.utils.notify import notify_owner
+from WahabX.utils.premium import premium_entities
 
 _PLAY_LOG = "Play"
 
@@ -696,15 +702,178 @@ async def play_commnd(
                 )
 
 
-# Dedicated video playback command group. Normal /play only handles audio;
-# /vplay and /vstream route through the same playback pipeline with video=True.
+# Dedicated video stream command. It intentionally does not reuse the audio
+# fallback branch: it always downloads an actual video file and starts VC video.
 @app.on_message(
     filters.group
     & filters.command(
-        ["vplay", "vplayforce", "vstream", "videoplay"],
+        ["vstream", "vplay", "vplayforce", "videoplay"],
         prefixes=["/", "!", "%", ",", "@", "#"],
     )
     & ~BANNED_USERS
 )
-async def dedicated_video_play_command(client, message: Message):
-    return await play_commnd(client, message)
+@PlayWrapper
+async def dedicated_video_play_command(
+    client,
+    message: Message,
+    _,
+    chat_id,
+    video,
+    channel,
+    playmode,
+    url,
+    fplay,
+):
+    user = message.from_user
+    if not user:
+        return
+
+    if not await is_video_allowed(chat_id):
+        text = "❌ Is group mein video streaming allowed nahi hai."
+        return await message.reply_text(text, entities=premium_entities(text))
+
+    args = getattr(message, "command", None) or []
+    query = (url or " ".join(args[1:])).strip()
+    if not query:
+        text = "🎵 Use: /vstream song name"
+        return await message.reply_text(text, entities=premium_entities(text))
+
+    status = await message.reply_text(
+        "🎵 YouTube par video search ho rahi hai...",
+        entities=premium_entities("🎵 YouTube par video search ho rahi hai..."),
+    )
+    try:
+        details, video_id = await Platform.youtube.track(query)
+        title = (details.get("title") or query).strip()
+        duration = details.get("duration_min")
+        if not duration or str(duration).strip().lower() == "none":
+            text = "❌ Video ki duration verify nahi hui, is liye download nahi ki."
+            return await status.edit_text(text, entities=premium_entities(text))
+
+        try:
+            duration_seconds = int(time_to_seconds(str(duration)))
+        except Exception:
+            duration_seconds = 0
+        limit_minutes = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10)
+        if duration_seconds <= 0:
+            text = "❌ Video ki duration read nahi hui. Doosra YouTube title/link try karo."
+            return await status.edit_text(text, entities=premium_entities(text))
+        if duration_seconds > limit_minutes * 60:
+            text = f"❌ {limit_minutes} minutes se lambi video download nahi hogi. Duration: {duration}"
+            return await status.edit_text(text, entities=premium_entities(text))
+
+        # Remove the previous queue/file and stop its VC stream before starting
+        # the new download. video_dl() also removes stale media and partial files.
+        if await is_active_chat(chat_id):
+            await Ayush.stop_stream(chat_id)
+
+        downloading_text = (
+            f"🥹 Video + audio download ho rahi hai...
+"
+            f"🎵 {title}
+"
+            f"⭐ Duration: {duration} (limit {limit_minutes} min)"
+        )
+        await status.edit_text(
+            downloading_text,
+            entities=premium_entities(downloading_text),
+        )
+        file_path, _direct = await Platform.youtube.download(
+            video_id,
+            status,
+            video=True,
+            videoid=True,
+            title=title,
+        )
+
+        # yt-dlp can merge to a different extension than the selected stream's
+        # metadata. Resolve the real completed video file before launching FFmpeg.
+        os.makedirs("downloads", exist_ok=True)
+        video_exts = (".mp4", ".mkv", ".webm", ".m4v", ".mov")
+        if not file_path or not os.path.isfile(file_path) or os.path.getsize(file_path) < 10240:
+            candidates = []
+            for filename in os.listdir("downloads"):
+                candidate = os.path.join("downloads", filename)
+                if (
+                    filename.startswith(f"{video_id}.")
+                    and filename.lower().endswith(video_exts)
+                    and os.path.isfile(candidate)
+                    and os.path.getsize(candidate) >= 10240
+                ):
+                    candidates.append(candidate)
+            if candidates:
+                file_path = max(candidates, key=os.path.getmtime)
+            else:
+                raise RuntimeError("YouTube download finished but no valid video file was found")
+
+        # Add the local file to the queue so the normal stream-end/stop cleanup
+        # deletes it later. The queue type is explicitly 'video' (not audio).
+        await put_queue(
+            chat_id,
+            message.chat.id,
+            file_path,
+            title,
+            str(duration),
+            user.mention,
+            video_id,
+            user.id,
+            "video",
+        )
+        try:
+            await Ayush.join_call(
+                chat_id,
+                message.chat.id,
+                file_path,
+                video=True,
+                image=details.get("thumb"),
+            )
+        except Exception:
+            # Remove queue entry and downloaded file if the VC could not start.
+            try:
+                await Ayush.stop_stream(chat_id)
+            except Exception:
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+            raise
+
+        caption = (
+            f"🥰 Video download complete — VC par video play ho rahi hai!
+"
+            f"🎵 {title}
+"
+            f"⭐ Duration: {duration}
+"
+            f"👤 Requested by: {user.first_name}"
+        )
+        thumb = details.get("thumb") or config.STREAM_IMG_URL
+        card = await app.send_photo(
+            message.chat.id,
+            photo=thumb,
+            caption=caption,
+            entities=premium_entities(caption),
+            reply_markup=InlineKeyboardMarkup(stream_markup(_, video_id, chat_id)),
+        )
+        if db.get(chat_id):
+            db[chat_id][0]["mystic"] = card
+            db[chat_id][0]["markup"] = "stream"
+        await status.edit_text(
+            "🥰 Video download complete! VC mein video + audio start ho gaya.",
+            entities=premium_entities("🥰 Video download complete! VC mein video + audio start ho gaya."),
+        )
+    except Exception as e:
+        LOGGER(_PLAY_LOG).error("[VSTREAM] failed: %s", e, exc_info=True)
+        try:
+            await notify_owner(
+                "VStream video download/playback",
+                e,
+                f"query={query[:100]} chat={message.chat.id} user={user.id}",
+            )
+        except Exception:
+            pass
+        error_text = f"❌ Video stream start nahi hui ({type(e).__name__}). YouTube title/link dobara try karo."
+        try:
+            await status.edit_text(error_text, entities=premium_entities(error_text))
+        except Exception:
+            pass
