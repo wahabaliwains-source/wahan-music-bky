@@ -48,6 +48,7 @@ async def put_queue(
         "seconds": duration_in_seconds,
         "played": 0,
         "url": url,
+        "user_id": user_id,
     }
 
     # Queue logic
