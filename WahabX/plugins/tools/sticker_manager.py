@@ -295,7 +295,7 @@ async def himawari_name_reply(client, message: Message):
         pass
 
     lowered = text.lower()
-    if not any(re.search(r"(?<!\\w)" + re.escape(name) + r"(?!\\w)", lowered) for name in names):
+    if not any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", lowered) for name in names):
         return
 
     now = time.monotonic()
