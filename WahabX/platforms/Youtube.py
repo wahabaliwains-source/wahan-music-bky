@@ -953,6 +953,16 @@ class YouTube:
             )
 
             info = extract_info_with_fallback(link, ydl_optssx)
+            # A video command must never silently succeed with an audio-only
+            # format. yt-dlp exposes vcodec='none' for such selections.
+            requested_formats = info.get("requested_formats") or []
+            has_video_stream = (
+                info.get("vcodec") not in (None, "", "none")
+                or any(fmt.get("vcodec") not in (None, "", "none") for fmt in requested_formats)
+            )
+            if not has_video_stream:
+                raise RuntimeError("YouTube returned an audio-only format for video playback")
+
             os.makedirs("downloads", exist_ok=True)
             xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
 
