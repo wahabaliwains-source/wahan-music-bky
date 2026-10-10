@@ -2,6 +2,7 @@
 # All rights reserved.
 #
 
+import asyncio
 import random
 import os
 import string
@@ -18,7 +19,7 @@ from WahabX import app, LOGGER, Platform
 from WahabX.core.call import Ayush
 from WahabX.misc import db
 from WahabX.utils import seconds_to_min, time_to_seconds
-from WahabX.utils.database import is_video_allowed
+from WahabX.utils.database import is_video_allowed, is_active_chat
 from WahabX.utils.decorators.play import PlayWrapper
 from WahabX.utils.formatters import formats
 from WahabX.utils.inline.play import (
@@ -35,6 +36,7 @@ from WahabX.utils.stream.queue import put_queue
 from WahabX.utils.notify import notify_owner
 
 _PLAY_LOG = "Play"
+_VSTREAM_LOCKS = {}
 
 
 @app.on_message(
@@ -701,8 +703,8 @@ async def play_commnd(
                 )
 
 
-# Dedicated video stream command. It intentionally does not reuse the audio
-# fallback branch: it always downloads an actual video file and starts VC video.
+# Dedicated video stream command. Queue video requests just like audio:
+# while a track is active, only enqueue the video ID; download at its turn.
 @app.on_message(
     filters.group
     & filters.command(
@@ -728,165 +730,195 @@ async def dedicated_video_play_command(
         return
 
     if not await is_video_allowed(chat_id):
-        text = "❌ Is group mein video streaming allowed nahi hai."
-        return await message.reply_text(text)
+        return await message.reply_text("❌ Is group mein video streaming allowed nahi hai.")
 
     args = getattr(message, "command", None) or []
     query = (url or " ".join(args[1:])).strip()
     if not query:
-        text = "🎵 Use: /vstream song name"
-        return await message.reply_text(text)
+        return await message.reply_text("🎥 Use: /vstream song name")
 
-    status = await message.reply_text(
-        "🎵 YouTube par video search ho rahi hai..."
-    )
-    try:
-        details, video_id = await Platform.youtube.track(query)
-        title = (details.get("title") or query).strip()
-        duration = details.get("duration_min")
-        if not duration or str(duration).strip().lower() == "none":
-            text = "❌ Video ki duration verify nahi hui, is liye download nahi ki."
-            return await status.edit_text(text)
-
+    status = await message.reply_text("💎 YouTube par video search ho rahi hai...")
+    lock = _VSTREAM_LOCKS.setdefault(chat_id, asyncio.Lock())
+    async with lock:
+        file_path = None
         try:
-            duration_seconds = int(time_to_seconds(str(duration)))
-        except Exception:
-            duration_seconds = 0
-        limit_minutes = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10)
-        if duration_seconds <= 0:
-            text = "❌ Video ki duration read nahi hui. Doosra YouTube title/link try karo."
-            return await status.edit_text(text)
-        if duration_seconds > limit_minutes * 60:
-            text = f"❌ {limit_minutes} minutes se lambi video download nahi hogi. Duration: {duration}"
-            return await status.edit_text(text)
+            details, video_id = await Platform.youtube.track(query)
+            title = (details.get("title") or query).strip()
+            duration = details.get("duration_min")
+            if not duration or str(duration).strip().lower() == "none":
+                return await status.edit_text(
+                    "❌ Video ki duration verify nahi hui, is liye download nahi ki."
+                )
 
-        # Always clear any previous audio/video queue and leave its stream before
-        # starting a replacement. video_dl() also removes stale media/temp files.
-        try:
-            await Ayush.stop_stream(chat_id)
-        except Exception as stop_error:
-            LOGGER(_PLAY_LOG).warning(
-                "[VSTREAM] previous stream cleanup had an issue: %s", stop_error
+            try:
+                duration_seconds = int(time_to_seconds(str(duration)))
+            except Exception:
+                duration_seconds = 0
+            limit_minutes = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10)
+            if duration_seconds <= 0:
+                return await status.edit_text(
+                    "❌ Video ki duration read nahi hui. Doosra YouTube title/link try karo."
+                )
+            if duration_seconds > limit_minutes * 60:
+                return await status.edit_text(
+                    f"❌ {limit_minutes} minutes se lambi video download nahi hogi. Duration: {duration}"
+                )
+
+            currently_playing = bool(db.get(chat_id)) and await is_active_chat(chat_id)
+            if currently_playing and not fplay:
+                # Queue a logical YouTube ID. change_stream() downloads it only
+                # after earlier tracks finish, so disk usage stays bounded.
+                position = await put_queue(
+                    chat_id,
+                    message.chat.id,
+                    f"vid_{video_id}",
+                    title,
+                    str(duration),
+                    user.mention,
+                    video_id,
+                    user.id,
+                    "video",
+                )
+                waiting = max(1, len(db.get(chat_id, [])) - 1)
+                await status.edit_text(
+                    f"💎 **Video queue mein add ho gayi!**\n"
+                    f"🎬 {title}\n⏳ Duration: {duration}\n"
+                    f"🔢 Queue position: {waiting}\n"
+                    "📥 Download tab hogi jab iski baari aaye gi."
+                )
+                return
+
+            # A fresh request starts the stream; /vplayforce intentionally
+            # clears current + queued tracks and starts this one immediately.
+            try:
+                await Ayush.stop_stream(chat_id)
+            except Exception as stop_error:
+                LOGGER(_PLAY_LOG).warning(
+                    "[VSTREAM] previous stream cleanup had an issue: %s", stop_error
+                )
+
+            await status.edit_text(
+                f"💎 Video + audio download ho rahi hai...\n"
+                f"🎵 {title}\n⭐ Duration: {duration} (limit {limit_minutes} min)"
+            )
+            file_path, _direct = await Platform.youtube.download(
+                video_id,
+                status,
+                video=True,
+                videoid=True,
+                title=title,
             )
 
-        downloading_text = (
-            f"🥹 Video + audio download ho rahi hai...\n"
-            f"🎵 {title}\n"
-            f"⭐ Duration: {duration} (limit {limit_minutes} min)"
-        )
-        await status.edit_text(downloading_text)
-        file_path, _direct = await Platform.youtube.download(
-            video_id,
-            status,
-            video=True,
-            videoid=True,
-            title=title,
-        )
+            os.makedirs("downloads", exist_ok=True)
+            video_exts = (".mp4", ".mkv", ".webm", ".m4v", ".mov")
+            if (
+                not file_path
+                or not os.path.isfile(file_path)
+                or not str(file_path).lower().endswith(video_exts)
+                or os.path.getsize(file_path) < 10240
+            ):
+                candidates = []
+                for filename in os.listdir("downloads"):
+                    candidate = os.path.join("downloads", filename)
+                    if (
+                        filename.startswith(f"{video_id}.")
+                        and filename.lower().endswith(video_exts)
+                        and os.path.isfile(candidate)
+                        and os.path.getsize(candidate) >= 10240
+                    ):
+                        candidates.append(candidate)
+                if candidates:
+                    file_path = max(candidates, key=os.path.getmtime)
+                else:
+                    raise RuntimeError(
+                        "YouTube download finished but no valid video file was found"
+                    )
 
-        # yt-dlp can merge to a different extension than the selected stream's
-        # metadata. Resolve the real completed video file before launching FFmpeg.
-        os.makedirs("downloads", exist_ok=True)
-        video_exts = (".mp4", ".mkv", ".webm", ".m4v", ".mov")
-        if (
-            not file_path
-            or not os.path.isfile(file_path)
-            or not str(file_path).lower().endswith(video_exts)
-            or os.path.getsize(file_path) < 10240
-        ):
-            candidates = []
-            for filename in os.listdir("downloads"):
-                candidate = os.path.join("downloads", filename)
-                if (
-                    filename.startswith(f"{video_id}.")
-                    and filename.lower().endswith(video_exts)
-                    and os.path.isfile(candidate)
-                    and os.path.getsize(candidate) >= 10240
-                ):
-                    candidates.append(candidate)
-            if candidates:
-                file_path = max(candidates, key=os.path.getmtime)
-            else:
-                raise RuntimeError("YouTube download finished but no valid video file was found")
-
-        # Add the local file to the queue so the normal stream-end/stop cleanup
-        # deletes it later. The queue type is explicitly 'video' (not audio).
-        await put_queue(
-            chat_id,
-            message.chat.id,
-            file_path,
-            title,
-            str(duration),
-            user.mention,
-            video_id,
-            user.id,
-            "video",
-        )
-        try:
-            await Ayush.join_call(
+            await put_queue(
                 chat_id,
                 message.chat.id,
                 file_path,
-                video=True,
-                image=details.get("thumb"),
+                title,
+                str(duration),
+                user.mention,
+                video_id,
+                user.id,
+                "video",
             )
-        except Exception:
-            # Remove queue entry and downloaded file if the VC could not start.
             try:
-                await Ayush.stop_stream(chat_id)
+                await Ayush.join_call(
+                    chat_id,
+                    message.chat.id,
+                    file_path,
+                    video=True,
+                    image=details.get("thumb"),
+                )
             except Exception:
+                try:
+                    await Ayush.stop_stream(chat_id)
+                except Exception:
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        pass
+                raise
+
+            caption = (
+                f"💎 Video + audio start ho gaya!\n"
+                f"🎵 {title}\n⭐ Duration: {duration}\n"
+                f"👤 Requested by: {user.first_name}"
+            )
+            thumb = details.get("thumb") or config.STREAM_IMG_URL
+            try:
+                card = await app.send_photo(
+                    message.chat.id,
+                    photo=thumb,
+                    caption=caption,
+                    reply_markup=InlineKeyboardMarkup(stream_markup(_, video_id, chat_id)),
+                )
+                if db.get(chat_id):
+                    db[chat_id][0]["mystic"] = card
+                    db[chat_id][0]["markup"] = "stream"
+            except Exception as card_error:
+                LOGGER(_PLAY_LOG).warning("[VSTREAM] player card failed: %s", card_error)
+
+            await status.edit_text(
+                f"💎 **Video download complete!**\n🎬 {title}\n"
+                "🔊 Voice chat mein video + audio start ho gaya."
+            )
+        except Exception as e:
+            LOGGER(_PLAY_LOG).error("[VSTREAM] failed: %s", e, exc_info=True)
+            if file_path and os.path.isfile(str(file_path)):
                 try:
                     os.remove(file_path)
                 except OSError:
                     pass
-            raise
-
-        caption = (
-            f"🥰 Video download complete — VC par video play ho rahi hai!\n"
-            f"🎵 {title}\n"
-            f"⭐ Duration: {duration}\n"
-            f"👤 Requested by: {user.first_name}"
-        )
-        thumb = details.get("thumb") or config.STREAM_IMG_URL
-        card = await app.send_photo(
-            message.chat.id,
-            photo=thumb,
-            caption=caption,
-            reply_markup=InlineKeyboardMarkup(stream_markup(_, video_id, chat_id)),
-        )
-        if db.get(chat_id):
-            db[chat_id][0]["mystic"] = card
-            db[chat_id][0]["markup"] = "stream"
-        await status.edit_text(
-            "🥰 Video download complete! VC mein video + audio start ho gaya."
-        )
-    except Exception as e:
-        LOGGER(_PLAY_LOG).error("[VSTREAM] failed: %s", e, exc_info=True)
-        try:
-            await notify_owner(
-                "VStream video download/playback",
-                e,
-                f"query={query[:100]} chat={message.chat.id} user={user.id}",
-            )
-        except Exception:
-            pass
-        error_detail = str(e).lower()
-        if (
-            "sign in to confirm" in error_detail
-            or "confirm you are not a bot" in error_detail
-            or "confirm you’re not a bot" in error_detail
-            or "confirm you're not a bot" in error_detail
-        ):
-            error_text = (
-                "❌ YouTube ne Railway download ko bot verification par rok diya. "
-                "Railway Variables mein fresh Netscape cookies ko YOUTUBE_COOKIES "
-                "naam se add karo, phir redeploy karke dobara try karo."
-            )
-        else:
-            error_text = (
-                f"❌ Video stream start nahi hui ({type(e).__name__}). "
-                "Doosra YouTube title/link try karo; details Railway logs mein hain."
-            )
-        try:
-            await status.edit_text(error_text)
-        except Exception:
-            pass
+            try:
+                await notify_owner(
+                    "VStream video download/playback",
+                    e,
+                    f"query={query[:100]} chat={message.chat.id} user={user.id}",
+                )
+            except Exception:
+                pass
+            error_detail = str(e).lower()
+            if (
+                "sign in to confirm" in error_detail
+                or "confirm you are not a bot" in error_detail
+                or "confirm you’re not a bot" in error_detail
+                or "confirm you're not a bot" in error_detail
+            ):
+                error_text = (
+                    "❌ YouTube ne Railway download ko bot verification par rok diya. "
+                    "Railway Variables mein fresh Netscape cookies ko YOUTUBE_COOKIES "
+                    "naam se add karo, phir redeploy karke dobara try karo."
+                )
+            else:
+                error_text = (
+                    f"❌ Video stream start nahi hui ({type(e).__name__}). "
+                    "Doosra YouTube title/link try karo; details Railway logs mein hain."
+                )
+            try:
+                await status.edit_text(error_text)
+            except Exception:
+                pass
