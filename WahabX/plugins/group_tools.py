@@ -10,12 +10,19 @@ ADMIN_STATUSES = {ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR}
 def _label(user):
     return (getattr(user, "first_name", None) or getattr(user, "username", None) or str(user.id)).strip()
 
-async def _bot_is_admin(client, chat_id):
+async def _bot_member(client, chat_id):
+    """Fetch the bot's membership using its numeric ID (not the ambiguous 'me' string)."""
     try:
-        me = await client.get_chat_member(chat_id, "me")
-        return me.status in ADMIN_STATUSES
-    except Exception:
-        return False
+        me = await client.get_me()
+        return await client.get_chat_member(chat_id, me.id)
+    except Exception as e:
+        print(f"[GROUP] could not fetch bot membership: {type(e).__name__}: {e}")
+        return None
+
+
+async def _bot_is_admin(client, chat_id):
+    member = await _bot_member(client, chat_id)
+    return bool(member and member.status in ADMIN_STATUSES)
 
 async def _caller_is_admin(client, message):
     if not message.from_user:
@@ -59,35 +66,59 @@ async def admins_command(client, message: Message):
 async def promote_command(client, message: Message):
     if not await _caller_is_admin(client, message):
         return
-    if not await _bot_is_admin(client, message.chat.id):
-        text = "🥵 Mujhe admin rights ke saath **Add New Admins** permission bhi do."
+
+    bot_member = await _bot_member(client, message.chat.id)
+    if not bot_member or bot_member.status not in ADMIN_STATUSES:
+        text = "🥵 Main is group mein admin nahi hoon. Mujhe pehle admin banao."
         await message.reply_text(text, entities=premium_entities(text))
         return
+
+    # Telegram only allows a bot to grant admin rights it already has.
+    if not bool(getattr(bot_member, "can_promote_members", False)):
+        text = "🥵 Mere admin rights mein **Add New Admins** permission ON karo, phir /promote chalega."
+        await message.reply_text(text, entities=premium_entities(text))
+        return
+
     target = await _target_from_message(client, message)
     if not target:
         text = "🙂 Kisi user ko reply karke /promote bhejo, ya /promote @username."
         await message.reply_text(text, entities=premium_entities(text))
         return
+    if target.id == bot_member.user.id:
+        text = "🙂 Main khud ko promote nahi kar sakta."
+        await message.reply_text(text, entities=premium_entities(text))
+        return
+
+    # Match assigned permissions to the bot's own rights. Previously the bot
+    # always requested several rights it might not possess, causing Telegram's
+    # RIGHT_FORBIDDEN error even when it had Add New Admins enabled.
+    rights = {
+        "can_change_info": bool(getattr(bot_member, "can_change_info", False)),
+        "can_post_messages": bool(getattr(bot_member, "can_post_messages", False)),
+        "can_edit_messages": bool(getattr(bot_member, "can_edit_messages", False)),
+        "can_delete_messages": bool(getattr(bot_member, "can_delete_messages", False)),
+        "can_invite_users": bool(getattr(bot_member, "can_invite_users", False)),
+        "can_restrict_members": bool(getattr(bot_member, "can_restrict_members", False)),
+        "can_pin_messages": bool(getattr(bot_member, "can_pin_messages", False)),
+        "can_manage_video_chats": bool(getattr(bot_member, "can_manage_video_chats", False)),
+        "can_manage_topics": bool(getattr(bot_member, "can_manage_topics", False)),
+        # Do not pass on the ability to promote more admins by default.
+        "can_promote_members": False,
+        "is_anonymous": False,
+    }
     try:
-        await client.promote_chat_member(
-            message.chat.id,
-            target.id,
-            can_change_info=False,
-            can_post_messages=True,
-            can_edit_messages=True,
-            can_delete_messages=True,
-            can_invite_users=True,
-            can_restrict_members=True,
-            can_pin_messages=True,
-            can_manage_video_chats=True,
-            can_promote_members=False,
-        )
+        await client.promote_chat_member(message.chat.id, target.id, **rights)
         text = f"🥰 **Promoted:** {_label(target)}"
         await message.reply_text(text, entities=premium_entities(text))
     except Exception as e:
-        print(f"[GROUP] promote failed: {type(e).__name__}: {e}")
-        text = "😢 Promote nahi hua. Check karo bot ke paas **Add New Admins** permission aur target par Telegram restrictions na hon."
+        reason = str(e)
+        print(f"[GROUP] promote failed: {type(e).__name__}: {reason}")
+        if "RIGHT_FORBIDDEN" in reason.upper() or "CHAT_ADMIN_REQUIRED" in reason.upper():
+            text = "😢 Telegram ne promotion reject ki. Bot ke admin rights mein **Add New Admins** ON check karo aur ensure karo target owner nahi hai."
+        else:
+            text = f"😢 Promote nahi hua: {type(e).__name__}. Bot ke **Add New Admins** rights aur target ki admin hierarchy check karo."
         await message.reply_text(text, entities=premium_entities(text))
+
 
 @app.on_message(filters.group & filters.command(["demote", "dem"]))
 async def demote_command(client, message: Message):
