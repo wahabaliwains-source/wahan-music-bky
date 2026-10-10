@@ -5,6 +5,7 @@ from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from pyrogram.types import Message
 
 from WahabX import app
+from WahabX.utils.decorators.admins import refresh_admin_cache
 
 ADMIN_STATUSES = {ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR}
 
@@ -155,6 +156,7 @@ async def promote_command(client, message: Message):
     # Grant only rights this bot actually has in this chat. Telegram rejects
     # attempts to grant rights above the bot's own privileges.
     rights = {
+        "can_manage_chat": _right(bot_member, "can_manage_chat"),
         "can_change_info": _right(bot_member, "can_change_info"),
         "can_post_messages": _right(bot_member, "can_post_messages"),
         "can_edit_messages": _right(bot_member, "can_edit_messages"),
@@ -168,6 +170,10 @@ async def promote_command(client, message: Message):
     }
     try:
         await client.promote_chat_member(message.chat.id, target.id, **rights)
+        try:
+            await refresh_admin_cache(client, message.chat.id)
+        except Exception as cache_error:
+            print(f"[GROUP] admin cache refresh after promotion failed: {type(cache_error).__name__}")
         rights_names = [
             key.removeprefix("can_").replace("_", " ")
             for key, value in rights.items()
@@ -212,6 +218,7 @@ async def demote_command(client, message: Message):
         await client.promote_chat_member(
             message.chat.id,
             target.id,
+            can_manage_chat=False,
             can_change_info=False,
             can_post_messages=False,
             can_edit_messages=False,
@@ -223,6 +230,10 @@ async def demote_command(client, message: Message):
             can_promote_members=False,
             is_anonymous=False,
         )
+        try:
+            await refresh_admin_cache(client, message.chat.id)
+        except Exception as cache_error:
+            print(f"[GROUP] admin cache refresh after demotion failed: {type(cache_error).__name__}")
         return await message.reply_text(f"⬇️ **Demoted:** {_label(target)}")
     except Exception as e:
         print(f"[GROUP] demote failed: {type(e).__name__}: {e}")

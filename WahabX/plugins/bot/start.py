@@ -43,13 +43,20 @@ loop = asyncio.get_running_loop()
 async def start_comm(client, message: Message, _):
     chat_id = message.chat.id
     try:
-        await message.react(emoji=raw.types.ReactionCustomEmoji(document_id=5852937227738291816))
+        await message.react(emoji="❤️")
     except Exception:
         try:
-            await message.react(emoji="😘")
+            await message.react(
+                emoji=raw.types.ReactionCustomEmoji(document_id=5821197535384964566)
+            )
         except Exception:
             pass
     await add_served_user(message.from_user.id)
+    try:
+        # 🤩 maps to the requested premium custom emoji document ID.
+        await message.reply_text("🤩")
+    except Exception:
+        pass
     if len(message.text.split()) > 1:
         name = message.text.split(None, 1)[1]
         if name[0:4] == "help":

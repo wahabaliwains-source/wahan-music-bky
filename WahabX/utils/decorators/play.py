@@ -104,10 +104,45 @@ def PlayWrapper(command):
         playty = await get_playtype(message.chat.id)
         if playty != "Everyone":
             if message.from_user.id not in SUDOERS:
-                admins = adminlist.get(message.chat.id)
+                admins = adminlist.get(message.chat.id) or []
                 if not admins:
-                    return await message.reply_text(_["admin_18"])
-                else:
+                    try:
+                        from WahabX.utils.decorators.admins import refresh_admin_cache
+                        admins = await refresh_admin_cache(client, message.chat.id)
+                    except Exception as e:
+                        print(
+                            f"[ADMIN_CACHE] play permission refresh failed for "
+                            f"{message.chat.id}: {type(e).__name__}: {e}"
+                        )
+                        admins = adminlist.get(message.chat.id) or []
+                if not admins:
+                    return await message.reply_text(
+                        "❌ Admin list abhi Telegram se load nahi hui. "
+                        "/admincache chalao aur bot ka admin access check karo."
+                    )
+                if message.from_user.id not in admins:
+                    # Cache may have been refreshed after this user was promoted.
+                    try:
+                        member = await client.get_chat_member(
+                            message.chat.id, message.from_user.id
+                        )
+                        from pyrogram.enums import ChatMemberStatus
+                        if member.status in (
+                            ChatMemberStatus.OWNER,
+                            ChatMemberStatus.ADMINISTRATOR,
+                        ):
+                            admins = await refresh_admin_cache(client, message.chat.id)
+                            if message.from_user.id not in admins:
+                                admins.append(message.from_user.id)
+                                adminlist[message.chat.id] = admins
+                        else:
+                            return await message.reply_text(_["play_4"])
+                    except Exception as e:
+                        print(
+                            f"[ADMIN_CACHE] direct permission check failed for "
+                            f"{message.chat.id}: {type(e).__name__}: {e}"
+                        )
+                        return await message.reply_text(_["play_4"])
                     if message.from_user.id not in admins:
                         return await message.reply_text(_["play_4"])
         command_name = (message.command[0] or "").lower()

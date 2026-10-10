@@ -16,8 +16,21 @@ from WahabX import app
 STICKER_FILE = os.path.join("tempdb", "himwari_stickers.json")
 PACK_FILE = os.path.join("tempdb", "himwari_sticker_packs.json")
 
-PACK_SHORT_NAME = "kawaiikipfel_by_moe_sticker_bot"
-PACK_LINK = "https://t.me/addstickers/kawaiikipfel_by_moe_sticker_bot"
+PACKS = (
+    (
+        "zngetu_by_Making_Stickers_Bot",
+        "https://t.me/addstickers/zngetu_by_Making_Stickers_Bot",
+    ),
+    (
+        "kawaiikipfel_by_moe_sticker_bot",
+        "https://t.me/addstickers/kawaiikipfel_by_moe_sticker_bot",
+    ),
+)
+PACK_SHORT_NAMES = tuple(name for name, _link in PACKS)
+PACK_LINKS = tuple(link for _name, link in PACKS)
+# Backward-compatible aliases: the latest user-provided pack.
+PACK_SHORT_NAME = PACK_SHORT_NAMES[-1]
+PACK_LINK = PACK_LINKS[-1]
 
 # Sticker file_ids are tiny strings, so keep the whole public pack.
 MAX_STICKERS = 5000
@@ -53,20 +66,21 @@ def _save(items):
         json.dump(clean[:MAX_STICKERS], f, ensure_ascii=False)
 
 
-def _save_pack_name(pack_name=PACK_SHORT_NAME):
+def _save_pack_name(pack_names=PACK_SHORT_NAMES):
     os.makedirs(os.path.dirname(PACK_FILE), exist_ok=True)
+    if isinstance(pack_names, str):
+        names = [pack_names]
+    else:
+        names = list(pack_names or PACK_SHORT_NAMES)
+    names = list(dict.fromkeys(name for name in names if isinstance(name, str) and name))
     with open(PACK_FILE, "w", encoding="utf-8") as f:
-        json.dump([pack_name], f, ensure_ascii=False)
+        json.dump(names, f, ensure_ascii=False)
 
 
 def _clear_old_saved_stickers():
-    # Old manually saved packs must never remain mixed with the fixed pack.
-    for path in (STICKER_FILE, PACK_FILE):
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception as e:
-            print(f"[STICKER] old data cleanup failed: {type(e).__name__}: {e}")
+    # Kept for compatibility with earlier code, but saved pack data is no
+    # longer deleted: old and newly requested sticker packs are merged.
+    return
 
 
 def random_sticker():
@@ -106,11 +120,11 @@ def _document_to_sticker_file_id(document, sticker_set):
         return None
 
 
-async def _fetch_complete_pack_file_ids(client):
+async def _fetch_complete_pack_file_ids(client, pack_name=PACK_SHORT_NAME):
     result = await client.invoke(
         raw.functions.messages.GetStickerSet(
             stickerset=raw.types.InputStickerSetShortName(
-                short_name=PACK_SHORT_NAME
+                short_name=pack_name
             ),
             hash=0,
         )
@@ -139,35 +153,38 @@ async def _fetch_complete_pack_file_ids(client):
 
 async def preload_fixed_sticker_pack(client):
     """
-    On every startup:
-      1. delete all old/manual sticker data;
-      2. fetch every sticker document from the fixed Telegram pack;
-      3. convert every raw document to a reusable sticker file_id;
-      4. save the complete list for instant random replies.
+    On startup, merge previously cached stickers with every sticker from both
+    configured public packs. A pack fetch failure never deletes the other pack.
     """
     async with _SAVE_LOCK:
-        _clear_old_saved_stickers()
+        file_ids = _load()
+        successful_packs = []
+        for pack_name, pack_link in PACKS:
+            try:
+                pack_ids = await _fetch_complete_pack_file_ids(client, pack_name)
+                file_ids.extend(pack_ids)
+                successful_packs.append((pack_name, pack_link, len(pack_ids)))
+                print(
+                    f"[STICKER] Loaded {len(pack_ids)} stickers from {pack_link}"
+                )
+            except Exception as e:
+                print(
+                    f"[STICKER] Pack fetch failed for {pack_name}: "
+                    f"{type(e).__name__}: {e}"
+                )
 
-        try:
-            file_ids = await _fetch_complete_pack_file_ids(client)
-            _save(file_ids)
-            _save_pack_name(PACK_SHORT_NAME)
-            print(
-                f"[STICKER] Auto-loaded complete pack: {len(file_ids)} stickers "
-                f"from {PACK_LINK}"
-            )
-            return len(file_ids)
+        file_ids = list(dict.fromkeys(x for x in file_ids if isinstance(x, str) and x))
+        if not file_ids:
+            file_ids = [SEED_STICKER_FILE_ID]
+            print("[STICKER] No pack cache available; using the fallback sticker.")
 
-        except Exception as e:
-            # Never leave the bot without a sticker. The supplied valid file_id
-            # is kept as a one-sticker emergency fallback.
-            _save([SEED_STICKER_FILE_ID])
-            _save_pack_name(PACK_SHORT_NAME)
-            print(
-                f"[STICKER] Full pack fetch failed: {type(e).__name__}: {e}. "
-                "Using the supplied fallback sticker."
-            )
-            return 1
+        _save(file_ids)
+        _save_pack_name(PACK_SHORT_NAMES)
+        print(
+            f"[STICKER] Ready with {len(file_ids)} combined stickers from "
+            f"{len(successful_packs)}/{len(PACKS)} pack(s)."
+        )
+        return len(file_ids)
 
 
 async def send_random_sticker(message: Message, probability: float = 0.12):
@@ -266,10 +283,11 @@ async def sticker_manager_compat(client, message: Message):
         return
     _PROCESSED_COMMANDS.add(command_key)
 
+    pack_lines = "\n".join(f"• {link}" for link in PACK_LINKS)
     await message.reply_text(
-        "Sticker pack automatic hai 💗\n"
-        f"Pack: {PACK_LINK}\n"
-        "Startup par purane stickers delete hoke poora pack automatically fetch hota hai."
+        "Dono sticker packs automatic save hain 💗\n"
+        f"{pack_lines}\n"
+        "Startup par dono packs fetch hote hain aur purane saved stickers preserve rehte hain."
     )
 
 
@@ -309,10 +327,11 @@ async def himawari_name_reply(client, message: Message):
 __MODULE__ = "Sᴛɪᴄᴋᴇʀ Pᴀᴄᴋ Mᴀɴᴀɢᴇʀ"
 __HELP__ = """
 **Sticker Pack Manager:**
-• Fixed pack automatically fetches at startup.
-• Old/manual sticker data is deleted first.
-• Every pack sticker is converted to a reusable Telegram file_id.
+• Both configured public sticker packs are fetched at startup and merged.
+• Existing saved sticker IDs are preserved across restarts.
+• Every fetched sticker is converted to a reusable Telegram file_id.
 • Replying to a sticker with a sticker makes the bot send another random pack sticker.
+• Mentioning Himawari makes the bot send a random sticker from either pack.
 • Telegram shows "choosing a sticker" while selecting the reply.
 • No manual sticker saving is required.
 """

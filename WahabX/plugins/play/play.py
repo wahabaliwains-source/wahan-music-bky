@@ -68,9 +68,7 @@ async def play_commnd(
         query_text[:120],
     )
     try:
-        mystic = await message.reply_text(
-            _["play_2"].format(channel) if channel else _["play_1"]
-        )
+        mystic = await message.reply_text("🤩")
     except ChatWriteForbidden:
         LOGGER(_PLAY_LOG).warning("[PLAY] ChatWriteForbidden for chat=%s", message.chat.id)
         return
@@ -737,7 +735,9 @@ async def dedicated_video_play_command(
     if not query:
         return await message.reply_text("🎥 Use: /vstream song name")
 
-    status = await message.reply_text("💎 YouTube par video search ho rahi hai...")
+    # The premium-emoji patch renders this as the user's custom emoji; keep
+    # the searching message emoji-only, then edit it with queue/download state.
+    status = await message.reply_text("🤩")
     lock = _VSTREAM_LOCKS.setdefault(chat_id, asyncio.Lock())
     async with lock:
         file_path = None
@@ -909,14 +909,39 @@ async def dedicated_video_play_command(
                 or "confirm you're not a bot" in error_detail
             ):
                 error_text = (
-                    "❌ YouTube ne Railway download ko bot verification par rok diya. "
-                    "Railway Variables mein fresh Netscape cookies ko YOUTUBE_COOKIES "
-                    "naam se add karo, phir redeploy karke dobara try karo."
+                    "❌ YouTube verification ki wajah se video download nahi hui. "
+                    "Fresh Netscape cookies ko YOUTUBE_COOKIES variable mein save karo, "
+                    "phir dobara try karo."
+                )
+            elif (
+                "no active voice chat" in error_detail
+                or "no active group call" in error_detail
+                or "noactivegroupcall" in error_detail
+            ):
+                error_text = (
+                    "❌ Group ka voice/video chat active nahi hai. Pehle group mein "
+                    "voice chat start karo, phir /vstream dobara bhejo."
+                )
+            elif "floodwait" in type(e).__name__.lower() or "flood_wait" in error_detail:
+                wait_seconds = getattr(e, "value", None)
+                wait_text = f" {int(wait_seconds)} seconds" if wait_seconds else " thori der"
+                error_text = (
+                    "⏳ Telegram ne voice chat connection par temporary wait lagaya hai. "
+                    f"{wait_text.strip()} ruk kar dobara /vstream try karo."
+                )
+            elif type(e).__name__ == "AssistantErr":
+                details = str(e).replace("**", "").strip()
+                if "railway" in details.lower():
+                    details = ""
+                error_text = (
+                    f"❌ Voice chat start nahi ho saki. {details[:220]}"
+                    if details
+                    else "❌ Voice chat start nahi ho saki. Voice chat active karke dobara try karo."
                 )
             else:
                 error_text = (
-                    f"❌ Video stream start nahi hui ({type(e).__name__}). "
-                    "Doosra YouTube title/link try karo; details Railway logs mein hain."
+                    "❌ Video stream start nahi hui. Voice chat active hai to thori der "
+                    "ruk kar dobara try karo."
                 )
             try:
                 await status.edit_text(error_text)

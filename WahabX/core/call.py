@@ -388,8 +388,42 @@ class Call:
                     config=call_config,
                 )
             except Exception as e:
+                error_name = type(e).__name__.lower()
+                error_text = str(e).lower()
+                if isinstance(e, FloodWait) or "floodwait" in error_name or "flood_wait" in error_text:
+                    wait_seconds = getattr(e, "value", None)
+                    try:
+                        wait_seconds = int(wait_seconds) if wait_seconds else 0
+                    except (TypeError, ValueError):
+                        wait_seconds = 0
+                    if wait_seconds:
+                        raise AssistantErr(
+                            "**Voice chat temporarily rate-limited**\n\n"
+                            f"Telegram asked the assistant to wait {wait_seconds} seconds. "
+                            "Wait that long, keep the group voice chat active, then try again."
+                        )
+                    raise AssistantErr(
+                        "**Voice chat temporarily rate-limited**\n\n"
+                        "Wait a little before trying again, and keep the group voice chat active."
+                    )
+                if (
+                    "noactivegroupcall" in error_name
+                    or "no active group call" in error_text
+                    or "no active voice chat" in error_text
+                ):
+                    raise AssistantErr(
+                        "**No active voice chat**\n\nStart the group's voice/video chat first, "
+                        "then send the play command again."
+                    )
+                if "interdc" in error_name or "interdc" in error_text:
+                    raise AssistantErr(
+                        "**Voice chat connection temporarily failed**\n\n"
+                        "Telegram could not connect the assistant to the call. Keep the group "
+                        "voice chat active, wait 30 seconds, and try again."
+                    )
                 raise AssistantErr(
-                    "**No Active Voice Chat Found**\n\nPlease make sure group's voice chat is enabled. If already enabled, please end it and start fresh voice chat again and if the problem continues, try /restart"
+                    "**Couldn't start the voice chat**\n\n"
+                    "Make sure the group's voice/video chat is active, then try again."
                 )
 
         except AlreadyJoinedError:

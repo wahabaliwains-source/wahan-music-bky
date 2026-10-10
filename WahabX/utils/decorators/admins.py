@@ -56,10 +56,10 @@ async def refresh_admin_cache(client, chat_id: int):
             print(f"[ADMIN_CACHE] skipped malformed authorized user for {chat_id}: {type(e).__name__}")
 
     fresh = list(dict.fromkeys(fresh))
-    # An empty result is almost always a Telegram access/scan problem. Do not
-    # wipe a previously valid cache; let /admincache report the issue instead.
-    if not fresh and adminlist.get(chat_id):
-        raise RuntimeError("Telegram returned an empty admin list; keeping previous cache")
+    # Every Telegram group has an owner. An empty scan means the API call did
+    # not produce a reliable list; preserve the old cache and report the failure.
+    if not fresh:
+        raise RuntimeError("Telegram returned no admin users; keeping previous cache")
     adminlist[chat_id] = fresh
     return fresh
 
