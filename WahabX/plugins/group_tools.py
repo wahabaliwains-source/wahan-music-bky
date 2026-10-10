@@ -52,7 +52,7 @@ async def _caller_can_manage_admins(client, message):
             return True
         return (
             member.status == ChatMemberStatus.ADMINISTRATOR
-            and bool(getattr(member, "can_promote_members", False))
+            and _right(member, "can_promote_members")
         )
     except Exception as e:
         print(f"[GROUP] could not verify caller promotion rights: {type(e).__name__}: {e}")
@@ -75,7 +75,9 @@ async def _target_from_message(client, message):
 
 
 def _right(member, name):
-    return bool(getattr(member, name, False))
+    direct = getattr(member, name, None)
+    privileges = getattr(member, "privileges", None)
+    return bool(direct or getattr(privileges, name, False))
 
 
 @app.on_message(filters.group & filters.command(["admins", "adminlist"]))
