@@ -75,9 +75,18 @@ async def _target_from_message(client, message):
 
 
 def _right(member, name):
-    direct = getattr(member, name, None)
-    privileges = getattr(member, "privileges", None)
-    return bool(direct or getattr(privileges, name, False))
+    if member is None:
+        return False
+    # Pyrogram versions expose administrator rights either directly on the
+    # ChatMember or through its privileges object.
+    for source in (
+        member,
+        getattr(member, "privileges", None),
+        getattr(member, "permissions", None),
+    ):
+        if source is not None and bool(getattr(source, name, False)):
+            return True
+    return False
 
 
 @app.on_message(filters.group & filters.command(["admins", "adminlist"]))
@@ -143,6 +152,8 @@ async def promote_command(client, message: Message):
 
     # Telegram only permits a bot to grant rights it itself has. fullpromote
     # mirrors supported rights from this bot; normal promote keeps promote-rights disabled.
+    # Grant only rights this bot actually has in this chat. Telegram rejects
+    # attempts to grant rights above the bot's own privileges.
     rights = {
         "can_change_info": _right(bot_member, "can_change_info"),
         "can_post_messages": _right(bot_member, "can_post_messages"),
@@ -170,10 +181,10 @@ async def promote_command(client, message: Message):
     except Exception as e:
         reason = str(e)
         print(f"[GROUP] {'fullpromote' if full else 'promote'} failed: {type(e).__name__}: {reason}")
-        if "RIGHT_FORBIDDEN" in reason.upper() or "CHAT_ADMIN_REQUIRED" in reason.upper():
+        if "RIGHT_FORBIDDEN" in reason.upper() or "CHAT_ADMIN_REQUIRED" in reason.upper() or "ADMIN_REQUIRED" in reason.upper():
             text = (
-                "😢 Telegram ne promotion reject ki. Bot ko **Add New Admins** aur "
-                "required admin rights enable karo; target owner/equal-higher admin na ho."
+                "😢 Telegram ne promotion reject ki. Bot ko group settings mein **Add New Admins** "
+                "ke saath woh tamam rights do jo aap grant karna chahte ho. Group owner ya equal/higher admin ko promote nahi kar sakte."
             )
         else:
             text = f"😢 Promote fail: {type(e).__name__}: {reason[:120]}"
