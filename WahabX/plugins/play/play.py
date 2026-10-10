@@ -33,7 +33,6 @@ from WahabX.utils.logger import play_logs
 from WahabX.utils.stream.stream import stream
 from WahabX.utils.stream.queue import put_queue
 from WahabX.utils.notify import notify_owner
-from WahabX.utils.premium import premium_entities
 
 _PLAY_LOG = "Play"
 
@@ -730,17 +729,16 @@ async def dedicated_video_play_command(
 
     if not await is_video_allowed(chat_id):
         text = "❌ Is group mein video streaming allowed nahi hai."
-        return await message.reply_text(text, entities=premium_entities(text))
+        return await message.reply_text(text)
 
     args = getattr(message, "command", None) or []
     query = (url or " ".join(args[1:])).strip()
     if not query:
         text = "🎵 Use: /vstream song name"
-        return await message.reply_text(text, entities=premium_entities(text))
+        return await message.reply_text(text)
 
     status = await message.reply_text(
-        "🎵 YouTube par video search ho rahi hai...",
-        entities=premium_entities("🎵 YouTube par video search ho rahi hai..."),
+        "🎵 YouTube par video search ho rahi hai..."
     )
     try:
         details, video_id = await Platform.youtube.track(query)
@@ -748,7 +746,7 @@ async def dedicated_video_play_command(
         duration = details.get("duration_min")
         if not duration or str(duration).strip().lower() == "none":
             text = "❌ Video ki duration verify nahi hui, is liye download nahi ki."
-            return await status.edit_text(text, entities=premium_entities(text))
+            return await status.edit_text(text)
 
         try:
             duration_seconds = int(time_to_seconds(str(duration)))
@@ -757,10 +755,10 @@ async def dedicated_video_play_command(
         limit_minutes = int(getattr(config, "SONG_DOWNLOAD_DURATION_LIMIT", 10) or 10)
         if duration_seconds <= 0:
             text = "❌ Video ki duration read nahi hui. Doosra YouTube title/link try karo."
-            return await status.edit_text(text, entities=premium_entities(text))
+            return await status.edit_text(text)
         if duration_seconds > limit_minutes * 60:
             text = f"❌ {limit_minutes} minutes se lambi video download nahi hogi. Duration: {duration}"
-            return await status.edit_text(text, entities=premium_entities(text))
+            return await status.edit_text(text)
 
         # Always clear any previous audio/video queue and leave its stream before
         # starting a replacement. video_dl() also removes stale media/temp files.
@@ -776,10 +774,7 @@ async def dedicated_video_play_command(
             f"🎵 {title}\n"
             f"⭐ Duration: {duration} (limit {limit_minutes} min)"
         )
-        await status.edit_text(
-            downloading_text,
-            entities=premium_entities(downloading_text),
-        )
+        await status.edit_text(downloading_text)
         file_path, _direct = await Platform.youtube.download(
             video_id,
             status,
@@ -856,15 +851,13 @@ async def dedicated_video_play_command(
             message.chat.id,
             photo=thumb,
             caption=caption,
-            caption_entities=premium_entities(caption),
             reply_markup=InlineKeyboardMarkup(stream_markup(_, video_id, chat_id)),
         )
         if db.get(chat_id):
             db[chat_id][0]["mystic"] = card
             db[chat_id][0]["markup"] = "stream"
         await status.edit_text(
-            "🥰 Video download complete! VC mein video + audio start ho gaya.",
-            entities=premium_entities("🥰 Video download complete! VC mein video + audio start ho gaya."),
+            "🥰 Video download complete! VC mein video + audio start ho gaya."
         )
     except Exception as e:
         LOGGER(_PLAY_LOG).error("[VSTREAM] failed: %s", e, exc_info=True)
@@ -878,6 +871,6 @@ async def dedicated_video_play_command(
             pass
         error_text = f"❌ Video stream start nahi hui ({type(e).__name__}). YouTube title/link dobara try karo."
         try:
-            await status.edit_text(error_text, entities=premium_entities(error_text))
+            await status.edit_text(error_text)
         except Exception:
             pass
