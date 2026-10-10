@@ -26,6 +26,7 @@ from WahabX.utils.inline.play import (
     livestream_markup,
     playlist_markup,
     slider_markup,
+    stream_markup,
     track_markup,
 )
 from WahabX.utils.inline.playlist import botplaylist_markup
@@ -768,10 +769,8 @@ async def dedicated_video_play_command(
             await Ayush.stop_stream(chat_id)
 
         downloading_text = (
-            f"🥹 Video + audio download ho rahi hai...
-"
-            f"🎵 {title}
-"
+            f"🥹 Video + audio download ho rahi hai...\\n"
+            f"🎵 {title}\\n"
             f"⭐ Duration: {duration} (limit {limit_minutes} min)"
         )
         await status.edit_text(
@@ -839,12 +838,9 @@ async def dedicated_video_play_command(
             raise
 
         caption = (
-            f"🥰 Video download complete — VC par video play ho rahi hai!
-"
-            f"🎵 {title}
-"
-            f"⭐ Duration: {duration}
-"
+            f"🥰 Video download complete — VC par video play ho rahi hai!\\n"
+            f"🎵 {title}\\n"
+            f"⭐ Duration: {duration}\\n"
             f"👤 Requested by: {user.first_name}"
         )
         thumb = details.get("thumb") or config.STREAM_IMG_URL
@@ -852,7 +848,7 @@ async def dedicated_video_play_command(
             message.chat.id,
             photo=thumb,
             caption=caption,
-            entities=premium_entities(caption),
+            caption_entities=premium_entities(caption),
             reply_markup=InlineKeyboardMarkup(stream_markup(_, video_id, chat_id)),
         )
         if db.get(chat_id):
