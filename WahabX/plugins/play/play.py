@@ -769,8 +769,8 @@ async def dedicated_video_play_command(
             await Ayush.stop_stream(chat_id)
 
         downloading_text = (
-            f"🥹 Video + audio download ho rahi hai...\\n"
-            f"🎵 {title}\\n"
+            f"🥹 Video + audio download ho rahi hai...\n"
+            f"🎵 {title}\n"
             f"⭐ Duration: {duration} (limit {limit_minutes} min)"
         )
         await status.edit_text(
@@ -838,9 +838,9 @@ async def dedicated_video_play_command(
             raise
 
         caption = (
-            f"🥰 Video download complete — VC par video play ho rahi hai!\\n"
-            f"🎵 {title}\\n"
-            f"⭐ Duration: {duration}\\n"
+            f"🥰 Video download complete — VC par video play ho rahi hai!\n"
+            f"🎵 {title}\n"
+            f"⭐ Duration: {duration}\n"
             f"👤 Requested by: {user.first_name}"
         )
         thumb = details.get("thumb") or config.STREAM_IMG_URL
