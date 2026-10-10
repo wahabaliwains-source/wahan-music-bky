@@ -952,7 +952,21 @@ class YouTube:
             )
 
             info = extract_info_with_fallback(link, ydl_optssx)
+            os.makedirs("downloads", exist_ok=True)
             xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
+
+            # Keep only the requested video on disk; remove stale downloaded
+            # media before a new video download to prevent storage growth.
+            for old_name in os.listdir("downloads"):
+                old_path = os.path.join("downloads", old_name)
+                if old_path == xyz or not os.path.isfile(old_path):
+                    continue
+                if old_name.lower().endswith((".mp4", ".mkv", ".webm", ".m4v", ".mp3", ".m4a", ".opus", ".webp", ".jpg", ".png")):
+                    try:
+                        os.remove(old_path)
+                    except OSError as cleanup_error:
+                        _log("warning", "video_dl() could not remove old file %s: %s", old_name, type(cleanup_error).__name__)
+
             if os.path.exists(xyz):
                 fsize = os.path.getsize(xyz)
                 if fsize < 10240:
