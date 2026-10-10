@@ -595,11 +595,33 @@ class Call:
                         )
                 try:
                     await client.play(chat_id, stream, config=call_config)
-                except Exception:
-                    return app.send_message(
-                        original_chat_id,
-                        text=_["call_7"],
+                except Exception as playback_error:
+                    failed_queue = db.get(chat_id) or []
+                    failed_item = failed_queue.pop(0) if failed_queue else None
+                    if failed_item:
+                        try:
+                            await auto_clean(failed_item)
+                        except Exception:
+                            pass
+                    LOGGER(__name__).error(
+                        "Queued video playback failed in chat %s: %s",
+                        chat_id, playback_error, exc_info=True
                     )
+                    try:
+                        await app.send_message(
+                            original_chat_id,
+                            f"⚠️ Video **{title[:80]}** play nahi hui; next queue item try kar rahi hoon."
+                        )
+                    except Exception:
+                        pass
+                    if db.get(chat_id):
+                        return await self.change_stream(client, chat_id, skip_current=True)
+                    await _clear_(chat_id)
+                    try:
+                        await client.leave_call(chat_id, close=False)
+                    except Exception:
+                        pass
+                    return
                 img = await gen_thumb(videoid)
                 button = stream_markup(_, videoid, chat_id)
                 if 'mystic' in locals():
