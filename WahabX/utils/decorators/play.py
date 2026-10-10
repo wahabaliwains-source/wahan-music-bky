@@ -110,13 +110,10 @@ def PlayWrapper(command):
                 else:
                     if message.from_user.id not in admins:
                         return await message.reply_text(_["play_4"])
-        if message.command[0][0] == "v":
-            video = True
-        else:
-            if "-v" in message.text:
-                video = True
-            else:
-                video = True if message.command[0][1] == "v" else None
+        command_name = (message.command[0] or "").lower()
+        # Dedicated video aliases: /vplay and /vstream. Keep the traditional
+        # /play command audio-only; cvplay remains the channel-video alias.
+        video = True if command_name.startswith("v") or command_name.startswith("cv") else None
         if message.command[0][-1] == "e":
             if not await is_active_chat(chat_id):
                 return await message.reply_text(_["play_18"])
