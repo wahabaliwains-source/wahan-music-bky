@@ -2,7 +2,7 @@ import asyncio
 
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
-from pyrogram.types import Message
+from pyrogram.types import ChatPrivileges, Message
 
 from WahabX import app
 from WahabX.utils.decorators.admins import refresh_admin_cache
@@ -169,7 +169,9 @@ async def promote_command(client, message: Message):
         "is_anonymous": False,
     }
     try:
-        await client.promote_chat_member(message.chat.id, target.id, **rights)
+        await client.promote_chat_member(
+            message.chat.id, target.id, privileges=ChatPrivileges(**rights)
+        )
         try:
             await refresh_admin_cache(client, message.chat.id)
         except Exception as cache_error:
@@ -218,17 +220,19 @@ async def demote_command(client, message: Message):
         await client.promote_chat_member(
             message.chat.id,
             target.id,
-            can_manage_chat=False,
-            can_change_info=False,
-            can_post_messages=False,
-            can_edit_messages=False,
-            can_delete_messages=False,
-            can_invite_users=False,
-            can_restrict_members=False,
-            can_pin_messages=False,
-            can_manage_video_chats=False,
-            can_promote_members=False,
-            is_anonymous=False,
+            privileges=ChatPrivileges(
+                can_manage_chat=False,
+                can_change_info=False,
+                can_post_messages=False,
+                can_edit_messages=False,
+                can_delete_messages=False,
+                can_invite_users=False,
+                can_restrict_members=False,
+                can_pin_messages=False,
+                can_manage_video_chats=False,
+                can_promote_members=False,
+                is_anonymous=False,
+            ),
         )
         try:
             await refresh_admin_cache(client, message.chat.id)
