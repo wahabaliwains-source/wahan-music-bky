@@ -104,9 +104,10 @@ _YT_CLIENTS = ["tv", "mweb", "web"]
 _YT_CLIENTS_STR = "tv,mweb,web"
 _AUDIO_FMT = "bestaudio/best/18/worst"
 _VIDEO_FMT = (
-    "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/"
-    "bestvideo[height<=?2160]+bestaudio/"
-    "best[height<=?2160]/18/best"
+    # Keep /vplay downloads reasonably small and reliably decodable in VC.
+    # 720p is a practical cap for smooth playback on Railway-sized instances.
+    "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/"
+    "best[height<=?720][ext=mp4]/best[height<=?720]/18/best"
 )
 
 # --- WPC PO Token Provider settings ---
@@ -955,17 +956,26 @@ class YouTube:
             os.makedirs("downloads", exist_ok=True)
             xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
 
-            # Keep only the requested video on disk; remove stale downloaded
-            # media before a new video download to prevent storage growth.
+            # Keep only the newly requested video on disk. This removes old
+            # downloaded videos/audio, thumbnails and interrupted yt-dlp parts
+            # so repeated /vplay commands cannot steadily fill the volume.
+            media_suffixes = (
+                ".mp4", ".mkv", ".webm", ".m4v", ".mov",
+                ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".flac",
+                ".webp", ".jpg", ".jpeg", ".png",
+            )
+            temporary_suffixes = (".part", ".ytdl", ".tmp", ".temp")
+            keep_path = os.path.abspath(xyz)
             for old_name in os.listdir("downloads"):
                 old_path = os.path.join("downloads", old_name)
-                if old_path == xyz or not os.path.isfile(old_path):
+                if not os.path.isfile(old_path) or os.path.abspath(old_path) == keep_path:
                     continue
-                if old_name.lower().endswith((".mp4", ".mkv", ".webm", ".m4v", ".mp3", ".m4a", ".opus", ".webp", ".jpg", ".png")):
+                lowered = old_name.lower()
+                if lowered.endswith(media_suffixes) or lowered.endswith(temporary_suffixes):
                     try:
                         os.remove(old_path)
                     except OSError as cleanup_error:
-                        _log("warning", "video_dl() could not remove old file %s: %s", old_name, type(cleanup_error).__name__)
+                        _log("warning", "video_dl() could not remove old media/temp file %s: %s", old_name, type(cleanup_error).__name__)
 
             if os.path.exists(xyz):
                 fsize = os.path.getsize(xyz)
