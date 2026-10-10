@@ -27,7 +27,7 @@ AI_BUSY_REPLY = "Aaj meri AI thodi busy hai 😭 kal reply dungi 💗"
 
 # In groups, ONLY this exact bot name triggers AI.
 # No username mention, no real Telegram first-name match, and no generic words.
-BOT_NAME_RE = re.compile(r"(?<!\w)himwari(?!\w)", re.I)
+BOT_NAME_RE = re.compile(r"(?<!\w)(?:himwari|himawari|himiwari|himawry)(?!\w)", re.I)
 
 ROMANTIC_RE = re.compile(
     r"\b(love|pyar|pyaar|jaan|baby|babe|mohabbat|kiss|kissing|miss you|i miss you|meri jaan|cutie|sweetheart|darling)\b"
@@ -179,7 +179,11 @@ async def friendly_chat(client, message: Message):
             and message.reply_to_message.from_user
             and message.reply_to_message.from_user.is_self
         )
+        # A reply/swipe to the bot gets a sticker-trigger chance; common
+        # spellings of Himwari also trigger a random sticker reply.
         if reply_to_bot and await send_random_sticker(message, probability=0.12):
+            return
+        if BOT_NAME_RE.search(text) and await send_random_sticker(message, probability=0.22):
             return
 
         # Keep Telegram's "typing..." indicator visible while the AI is
