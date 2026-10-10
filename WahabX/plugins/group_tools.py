@@ -33,6 +33,23 @@ async def _caller_is_admin(client, message):
     except Exception:
         return False
 
+
+async def _caller_can_manage_admins(client, message):
+    """Avoid letting ordinary admins use the bot to bypass their own Telegram rights."""
+    if not message.from_user:
+        return False
+    try:
+        member = await client.get_chat_member(message.chat.id, message.from_user.id)
+        if member.status == ChatMemberStatus.OWNER:
+            return True
+        return (
+            member.status == ChatMemberStatus.ADMINISTRATOR
+            and bool(getattr(member, "can_promote_members", False))
+        )
+    except Exception as e:
+        print(f"[GROUP] could not verify caller promotion rights: {type(e).__name__}: {e}")
+        return False
+
 async def _target_from_message(client, message):
     if message.reply_to_message and message.reply_to_message.from_user:
         return message.reply_to_message.from_user
@@ -64,7 +81,9 @@ async def admins_command(client, message: Message):
 
 @app.on_message(filters.group & filters.command(["promote", "prom"]))
 async def promote_command(client, message: Message):
-    if not await _caller_is_admin(client, message):
+    if not await _caller_can_manage_admins(client, message):
+        text = "🥵 Sirf group owner ya **Add New Admins** permission wale admin /promote kar sakte hain."
+        await message.reply_text(text, entities=premium_entities(text))
         return
 
     bot_member = await _bot_member(client, message.chat.id)
@@ -101,7 +120,6 @@ async def promote_command(client, message: Message):
         "can_restrict_members": bool(getattr(bot_member, "can_restrict_members", False)),
         "can_pin_messages": bool(getattr(bot_member, "can_pin_messages", False)),
         "can_manage_video_chats": bool(getattr(bot_member, "can_manage_video_chats", False)),
-        "can_manage_topics": bool(getattr(bot_member, "can_manage_topics", False)),
         # Do not pass on the ability to promote more admins by default.
         "can_promote_members": False,
         "is_anonymous": False,
