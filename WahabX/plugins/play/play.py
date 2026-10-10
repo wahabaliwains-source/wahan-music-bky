@@ -869,7 +869,23 @@ async def dedicated_video_play_command(
             )
         except Exception:
             pass
-        error_text = f"❌ Video stream start nahi hui ({type(e).__name__}). YouTube title/link dobara try karo."
+        error_detail = str(e).lower()
+        if (
+            "sign in to confirm" in error_detail
+            or "confirm you are not a bot" in error_detail
+            or "confirm you’re not a bot" in error_detail
+            or "confirm you're not a bot" in error_detail
+        ):
+            error_text = (
+                "❌ YouTube ne Railway download ko bot verification par rok diya. "
+                "Railway Variables mein fresh Netscape cookies ko YOUTUBE_COOKIES "
+                "naam se add karo, phir redeploy karke dobara try karo."
+            )
+        else:
+            error_text = (
+                f"❌ Video stream start nahi hui ({type(e).__name__}). "
+                "Doosra YouTube title/link try karo; details Railway logs mein hain."
+            )
         try:
             await status.edit_text(error_text)
         except Exception:
