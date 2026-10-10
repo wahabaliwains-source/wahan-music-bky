@@ -105,13 +105,26 @@ def AdminRightsCheck(mystic):
             if message.from_user.id not in SUDOERS:
                 admins = adminlist.get(message.chat.id) or []
                 if message.from_user.id not in admins:
+                    # First ask Telegram directly: cache may be stale after a
+                    # promotion/demotion or bot restart.
                     try:
-                        admins = await refresh_admin_cache(client, message.chat.id)
+                        member = await client.get_chat_member(
+                            message.chat.id, message.from_user.id
+                        )
+                        if member.status in (
+                            ChatMemberStatus.OWNER,
+                            ChatMemberStatus.ADMINISTRATOR,
+                        ):
+                            admins = await refresh_admin_cache(client, message.chat.id)
+                            if message.from_user.id not in admins:
+                                admins.append(message.from_user.id)
+                                adminlist[message.chat.id] = admins
+                        else:
+                            admins = await refresh_admin_cache(client, message.chat.id)
                     except Exception as e:
                         print(f"[ADMIN_CACHE] refresh failed for {message.chat.id}: {type(e).__name__}: {e}")
-                    if not admins:
                         return await message.reply_text(
-                            "❌ Admin cache empty hai. Bot ko group mein admin banao, phir /admincache chalao."
+                            "❌ 💎 Admin list Telegram se refresh nahi hui. Bot ka admin access check karo aur /admincache try karo."
                         )
                     if message.from_user.id not in admins:
                         return await message.reply_text(_["admin_19"])
