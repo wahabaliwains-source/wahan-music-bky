@@ -405,7 +405,7 @@ class Call:
         if video:
             await add_active_video_chat(chat_id)
 
-    async def change_stream(self, client, chat_id):
+    async def change_stream(self, client, chat_id, skip_current=False):
         check = db.get(chat_id)
         popped = None
         loop = await get_loop(chat_id)
@@ -419,7 +419,11 @@ class Call:
                 LOGGER(__name__).error(f"Failed to leave call for empty queue chat {chat_id}: {e}")
             return
         try:
-            if loop == 0:
+            if skip_current:
+                # A queued item already failed before it started; launch the
+                # current queue head without popping that next item.
+                popped = None
+            elif loop == 0:
                 popped = check.pop(0)
             else:
                 loop = loop - 1
@@ -522,7 +526,6 @@ class Call:
             elif "vid_" in queued:
                 video = True if str(streamtype) == "video" else False
                 mystic = await app.send_message(original_chat_id, _["call_8"])
-                mystic = await app.send_message(original_chat_id, _["call_8"])
                 try:
                     stream_link, direct = await Platform.youtube.download(
                         videoid,
@@ -530,15 +533,37 @@ class Call:
                         videoid=True,
                         video=video,
                     )
-                except Exception:
+                except Exception as download_error:
                     try:
                         await mystic.delete()
                     except Exception:
                         pass
-                    return await app.send_message(
-                        original_chat_id,
-                        text=_["call_7"],
+                    failed_queue = db.get(chat_id) or []
+                    failed_item = failed_queue.pop(0) if failed_queue else None
+                    if failed_item:
+                        try:
+                            await auto_clean(failed_item)
+                        except Exception:
+                            pass
+                    LOGGER(__name__).error(
+                        "Queued video download failed in chat %s: %s",
+                        chat_id, download_error, exc_info=True
                     )
+                    try:
+                        await app.send_message(
+                            original_chat_id,
+                            f"⚠️ Queued video **{title[:80]}** download nahi hui; next queue item try kar rahi hoon."
+                        )
+                    except Exception:
+                        pass
+                    if db.get(chat_id):
+                        return await self.change_stream(client, chat_id, skip_current=True)
+                    await _clear_(chat_id)
+                    try:
+                        await client.leave_call(chat_id, close=False)
+                    except Exception:
+                        pass
+                    return
                 is_remote = isinstance(stream_link, str) and stream_link.startswith("http")
                 ffmpeg_params = (_REMOTE_FFMPEG_PARAMS_VIDEO if is_remote else _LOCAL_FFMPEG_PARAMS_VIDEO) if video else (_REMOTE_FFMPEG_PARAMS if is_remote else _LOCAL_FFMPEG_PARAMS)
                 if video:
