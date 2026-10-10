@@ -14,11 +14,10 @@ _WARNINGS = defaultdict(lambda: defaultdict(int))
 COMMANDS = {
     "ban", "unban", "kick",
     "mute", "unmute",
-    "promote", "demote",
+    "lock", "unlock", "lockchat", "unlockchat",
     "warn", "unwarn",
     "del", "delete",
     "purge",
-    "admins",
 }
 
 _COMMAND_RE = re.compile(r"^/([A-Za-z_]+)(?:@[\w_]+)?(?:\s+(.+))?$")
@@ -43,15 +42,34 @@ async def _is_admin(message: Message) -> bool:
         return False
 
 
-async def _bot_is_admin(message: Message) -> bool:
+async def _bot_member(message: Message):
     try:
-        member = await app.get_chat_member(message.chat.id, "me")
-        return member.status in (
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.OWNER,
-        )
+        me = await app.get_me()
+        return await app.get_chat_member(message.chat.id, me.id)
     except Exception:
-        return False
+        return None
+
+
+async def _bot_is_admin(message: Message) -> bool:
+    member = await _bot_member(message)
+    return bool(member and member.status in (
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.OWNER,
+    ))
+
+
+async def _require_bot_restrict_rights(message: Message) -> bool:
+    member = await _bot_member(message)
+    if member and member.status == ChatMemberStatus.OWNER:
+        return True
+    if member and member.status == ChatMemberStatus.ADMINISTRATOR and bool(
+        getattr(member, "can_restrict_members", False)
+    ):
+        return True
+    await message.reply_text(
+        "❌ Is command ke liye bot ko **Restrict Members** permission chahiye."
+    )
+    return False
 
 
 async def _bot_is_owner(message: Message) -> bool:
@@ -127,6 +145,34 @@ async def group_management(client, message: Message):
 
     if not await _is_admin(message):
         return await message.reply_text("❌ Sirf group admins ye command use kar sakte hain.")
+
+    if command in ("lock", "lockchat", "unlock", "unlockchat"):
+        if not await _require_bot_restrict_rights(message):
+            return
+        locked = command in ("lock", "lockchat")
+        try:
+            if locked:
+                permissions = ChatPermissions(
+                    can_send_messages=False,
+                    can_send_media_messages=False,
+                    can_send_polls=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False,
+                )
+                await app.set_chat_permissions(message.chat.id, permissions=permissions)
+                return await message.reply_text(
+                    "🔒 **Group locked!** Members ke messages/media temporarily band kar diye."
+                )
+            await app.set_chat_permissions(
+                message.chat.id, permissions=_full_permissions()
+            )
+            return await message.reply_text(
+                "🔓 **Group unlocked!** Members dobara messages bhej sakte hain."
+            )
+        except Exception as e:
+            return await message.reply_text(
+                f"❌ Group lock/unlock failed: {type(e).__name__}: {str(e)[:120]}"
+            )
 
     if command in ("del", "delete"):
         if not await _require_bot_admin(message):
@@ -229,6 +275,8 @@ async def group_management(client, message: Message):
             return await message.reply_text(f"👢 {target.mention} kick kar diya.")
 
         if command == "mute":
+            if not await _require_bot_restrict_rights(message):
+                return
             await app.restrict_chat_member(
                 message.chat.id,
                 target.id,
@@ -237,6 +285,8 @@ async def group_management(client, message: Message):
             return await message.reply_text(f"🔇 {target.mention} mute ho gaya.")
 
         if command == "unmute":
+            if not await _require_bot_restrict_rights(message):
+                return
             await app.restrict_chat_member(
                 message.chat.id,
                 target.id,
@@ -303,12 +353,13 @@ __HELP__ = """
 **Gʀᴏᴜᴘ Mᴀɴᴀɢᴇᴍᴇɴᴛ:**
 • `/ban`, `/unban`, `/kick` — reply/username/ID
 • `/mute`, `/unmute` — reply/username/ID
-• `/promote`, `/demote` — reply/username/ID
+• `/promote`, `/fullpromote`, `/demote` — reply/username/ID
 • `/warn`, `/unwarn` — 3 warnings par ban
 • `/del` / `/delete` — replied message delete
 • `/purge 22` — last 22 messages delete
 • `/purge` — reply se purge
-• `/admins` — admin list
+• `/lock`, `/unlock` — group default permissions
+• `/admincache` / `/reload` — refresh music admin cache
 • New members ko automatic welcome
 • Bot ko required admin permissions dena zaroori hai.
 """
