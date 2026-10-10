@@ -792,7 +792,12 @@ async def dedicated_video_play_command(
         # metadata. Resolve the real completed video file before launching FFmpeg.
         os.makedirs("downloads", exist_ok=True)
         video_exts = (".mp4", ".mkv", ".webm", ".m4v", ".mov")
-        if not file_path or not os.path.isfile(file_path) or os.path.getsize(file_path) < 10240:
+        if (
+            not file_path
+            or not os.path.isfile(file_path)
+            or not str(file_path).lower().endswith(video_exts)
+            or os.path.getsize(file_path) < 10240
+        ):
             candidates = []
             for filename in os.listdir("downloads"):
                 candidate = os.path.join("downloads", filename)
