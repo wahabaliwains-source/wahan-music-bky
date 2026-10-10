@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import random
+import re
+import time
 
 from pyrogram import filters, raw
 from pyrogram.enums import ChatAction
@@ -26,6 +28,8 @@ SEED_STICKER_FILE_ID = "CAACAgUAAxkBAAESAqJqxxoSQJTiXVWHQfOeqLcGYd3nvgACHh8AAsZX
 
 _SAVE_LOCK = asyncio.Lock()
 _PROCESSED_COMMANDS = set()
+_MENTION_COOLDOWN = {}
+_MENTION_COOLDOWN_SECONDS = 15
 
 
 def _load():
@@ -267,6 +271,39 @@ async def sticker_manager_compat(client, message: Message):
         f"Pack: {PACK_LINK}\n"
         "Startup par purane stickers delete hoke poora pack automatically fetch hota hai."
     )
+
+
+
+
+@app.on_message(filters.text & filters.group, group=21)
+async def himawari_name_reply(client, message: Message):
+    """Reply with a random sticker when the group calls the bot by name."""
+    if not message.from_user or message.from_user.is_bot:
+        return
+    text = (message.text or "").strip()
+    if not text or text.startswith("/"):
+        return
+
+    names = {"himawari", "himiwari", "himwari", "himawari chan"}
+    try:
+        me = await client.get_me()
+        if getattr(me, "username", None):
+            names.add(me.username.lower())
+        if getattr(me, "first_name", None):
+            names.add(me.first_name.lower())
+    except Exception:
+        pass
+
+    lowered = text.lower()
+    if not any(re.search(r"(?<!\\w)" + re.escape(name) + r"(?!\\w)", lowered) for name in names):
+        return
+
+    now = time.monotonic()
+    chat_id = message.chat.id
+    if now - _MENTION_COOLDOWN.get(chat_id, 0) < _MENTION_COOLDOWN_SECONDS:
+        return
+    _MENTION_COOLDOWN[chat_id] = now
+    await send_random_sticker(message, probability=1.0)
 
 
 __MODULE__ = "Sᴛɪᴄᴋᴇʀ Pᴀᴄᴋ Mᴀɴᴀɢᴇʀ"
