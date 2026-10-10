@@ -51,26 +51,45 @@ def yt_dlp_binary():
 
 
 def cookies():
-    folder_path = f"{os.getcwd()}/cookies"
-    if not os.path.isdir(folder_path):
-        _log("warning", "cookies folder not found at %s", folder_path)
-        return None
-    txt_files = [file for file in os.listdir(folder_path) if file.endswith(".txt")]
-    if not txt_files:
-        _log("warning", "no .txt files in cookies folder")
-        return None
-    for cookie_txt_file in txt_files:
-        cookie_txt_file = os.path.join(folder_path, cookie_txt_file)
+    """
+    Resolve YouTube cookies without committing account credentials to Git.
+    Prefer the Railway secret YOUTUBE_COOKIES; otherwise use only the explicit
+    runtime path cookies/cookies.txt (never example.txt or arbitrary .txt files).
+    """
+    import tempfile
+
+    cookie_text = os.getenv("YOUTUBE_COOKIES", "").strip()
+    if cookie_text:
+        # Railway variables may contain literal escaped newlines if pasted that way.
+        cookie_text = cookie_text.replace("\\r\\n", "\\n").replace("\\n", "\n")
+        if "# Netscape HTTP Cookie File" not in cookie_text and "# HTTP Cookie File" not in cookie_text:
+            _log("warning", "YOUTUBE_COOKIES is set but is not Netscape cookie format")
+            return None
+        path = os.path.join(tempfile.gettempdir(), "youtube-cookies-runtime.txt")
         try:
-            with open(cookie_txt_file) as f:
-                header = f.read(200)
+            with open(path, "w", encoding="utf-8") as cookie_file:
+                cookie_file.write(cookie_text.rstrip() + "\n")
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            _log("info", "using YouTube cookies from secure runtime variable")
+            return path
         except Exception as e:
-            _log("warning", "failed to read cookie file %s: %s", cookie_txt_file, e)
-            continue
-        if "# Netscape HTTP Cookie File" in header or "# HTTP Cookie File" in header:
-            _log("info", "using cookie file: %s", cookie_txt_file)
-            return cookie_txt_file
-    _log("warning", "no valid Netscape cookie file found")
+            _log("error", "could not materialize YOUTUBE_COOKIES: %s", type(e).__name__)
+            return None
+
+    path = os.path.join(os.getcwd(), "cookies", "cookies.txt")
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as cookie_file:
+                header = cookie_file.read(200)
+            if "# Netscape HTTP Cookie File" in header or "# HTTP Cookie File" in header:
+                _log("info", "using runtime cookies/cookies.txt")
+                return path
+        except Exception as e:
+            _log("warning", "failed to read explicit cookie file: %s", type(e).__name__)
+    _log("info", "no YouTube cookie configured; using cookie-free extraction")
     return None
 
 
